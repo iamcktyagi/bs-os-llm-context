@@ -65,7 +65,59 @@ Append tokens to the connection URL.
 }
 ```
 
-### Subscription & Parsing
+### Subscription Patterns
+
+The `subscribe_assets` context variable is a `list[Asset]` provided by the framework when resolving subscribe/unsubscribe messages.
+
+#### Per-Channel Subscription (Recommended)
+When different streams need different subscribe messages, use per-channel keys:
+```python
+"subscribe": {
+    "subscribe": {
+        "data": {  # Subscribe message for the 'data' stream
+            "format": "json",
+            "json": {
+                "fields": {
+                    "action": {"source": "'subscribe'"},
+                    "trades": {"source": "[a.broker_symbol or a.symbol for a in subscribe_assets]"},
+                }
+            }
+        },
+        "quote": {  # Different message for the 'quote' stream
+            "format": "json",
+            "json": {
+                "fields": {
+                    "action": {"source": "'subscribe'"},
+                    "quotes": {"source": "[a.broker_symbol or a.symbol for a in subscribe_assets]"},
+                }
+            }
+        }
+    },
+    "unsubscribe": {
+        "data": {
+            "format": "json",
+            "json": {
+                "fields": {
+                    "action": {"source": "'unsubscribe'"},
+                    "trades": {"source": "[a.broker_symbol or a.symbol for a in subscribe_assets]"},
+                }
+            }
+        },
+        "quote": {
+            "format": "json",
+            "json": {
+                "fields": {
+                    "action": {"source": "'unsubscribe'"},
+                    "quotes": {"source": "[a.broker_symbol or a.symbol for a in subscribe_assets]"},
+                }
+            }
+        }
+    }
+}
+```
+
+#### Unified Subscription (Single message for all channels)
+When one message subscribes to all streams at once:
 ```python
 "subscribe": {
     "subscribe": {
@@ -74,29 +126,21 @@ Append tokens to the connection URL.
             "json": {
                 "fields": {
                     "action": {"source": "'subscribe'"},
-                    "trades": {"source": "[asset.broker_symbol or asset.symbol]"},
-                    "quotes": {"source": "[asset.broker_symbol or asset.symbol]"}
-                }
-            }
-        }
-    },
-    "unsubscribe": {
-        "all": {
-            "format": "json",
-            "json": {
-                "fields": {
-                    "action": {"source": "'unsubscribe'"},
-                    "trades": {"source": "[asset.broker_symbol or asset.symbol]"},
-                    "quotes": {"source": "[asset.broker_symbol or asset.symbol]"}
+                    "trades": {"source": "[a.broker_symbol or a.symbol for a in subscribe_assets]"},
+                    "quotes": {"source": "[a.broker_symbol or a.symbol for a in subscribe_assets]"}
                 }
             }
         }
     }
-},
+}
+```
+
+### Parsing
+```python
 "parser": {
-    "format": "json",
-    # If the relevant data is nested under a key (e.g., "data")
-    "payload_path": "data" 
+    "format": "json",       # "json", "text", or "binary"
+    # If the relevant data is nested under a key:
+    "payload_path": "data.get('payload', data)"  # Expression with `data` = parsed message
 }
 ```
 
@@ -133,17 +177,37 @@ SocketIO often uses query parameters or initial handshake headers.
 }
 ```
 
+### SocketIO Events Mapping
+
+SocketIO communicates via named "events". Map Blueshift channels to SocketIO event names using the `events` field on the connection:
+
+```python
+"market_data": {
+    "url": "https://stream.broker.com",
+    "backend": {"type": "socketio", "options": {"transports": ["websocket"]}},
+    "streams": ["data", "quote"],
+    # Map channel names -> SocketIO event names the server emits
+    "events": {
+        "data": "stock",          # Server emits 'stock' event for trade data
+        "quote": "quote_update",  # Server emits 'quote_update' for quotes
+    },
+    ...
+}
+```
+
+Without `events`, the framework listens for events matching the channel name directly.
+
 ### Subscription (Events)
-SocketIO uses "events" rather than raw messages. The `subscribe` payload should define the event name and data.
+SocketIO uses "events" rather than raw messages. The subscribe payload is emitted as a SocketIO event:
 ```python
 "subscribe": {
     "subscribe": {
-        "all": {
+        "data": {
             "format": "json",
             "json": {
                 "fields": {
-                    "type": {"source": "'subscribe'"},
-                    "channels": {"source": "[asset.broker_symbol or asset.symbol]"}
+                    "action": {"source": "'join'"},
+                    "data": {"source": "[a.security_id for a in subscribe_assets]"}
                 }
             }
         }
@@ -240,18 +304,223 @@ If a single connection receives multiple data types (Quotes, Trades, Order Updat
     "enabled": True,
     "rules": [
         {
-            "channel": "data", # Trades/Bars
-            "match": "is_trade_message" # Function returning Bool
+            "channel": "data",  # Trades/Bars
+            "match": "data.get('type') == 'trade'"  # Expression with `data` in context
         },
         {
             "channel": "quote", # Ticks/Depth
-            "match": "is_quote_message"
+            "match": "data.get('type') == 'quote'"
         },
         {
             "channel": "order", # Order updates
-            "match": "is_order_update"
+            "match": "data.get('type') == 'order_update'"
         }
     ],
-    "default_channel": "unknown"
+    "default_channel": "data"  # Fallback if no rules match
+}
+```
+
+Router `match` expressions receive `data` (the parsed/extracted message) in their context. They must evaluate to a truthy value for a match.
+
+---
+
+## 6. Available Streaming Channels
+
+The framework recognizes these channel names:
+
+| Channel | Purpose | Converter Output |
+|---------|---------|-----------------|
+| `data` | Trade/bar data (OHLCV ticks) | Ingested into data store |
+| `quote` | Level-1 quotes (bid/ask/last) | Quote updates |
+| `order` | Order status updates | Order state changes |
+| `position` | Position updates | Position state changes |
+| `account` | Account balance updates | Account state |
+| `heartbeat` | Keep-alive messages | Ignored (internal) |
+
+---
+
+## 7. Connection `frame` Field
+
+Controls how the framework interprets each incoming message:
+
+```python
+"market_data": {
+    "url": "...",
+    "frame": "record",    # Default: each message = one record
+    # OR
+    "frame": "array",     # Each message = list of records (iterate and process each)
+    ...
+}
+```
+
+- `"record"` (default): Each WebSocket/SocketIO message is one data point
+- `"array"`: Each message is a list; the framework iterates and processes each element through router/converters independently
+
+---
+
+## 8. Streaming Lifecycle Hooks
+
+Define hooks for connection lifecycle events:
+
+```python
+"market_data": {
+    "url": "...",
+    "hooks": {
+        "on_connect": "my_on_connect",       # Called when connection established
+        "on_disconnect": "my_on_disconnect", # Called on disconnection
+        "on_error": "my_on_error",           # Called on error
+        "on_message": "my_on_message",       # Called on every raw message (before parser)
+    },
+    ...
+}
+```
+
+Hook functions receive `**context` with `broker`, `credentials`, `connection_name`, and event-specific args:
+```python
+@registry.register()
+def my_on_connect(broker, **kwargs):
+    """Called when streaming connection is established."""
+    broker.logger.info("Streaming connected")
+
+@registry.register()
+def my_on_disconnect(broker, **kwargs):
+    """Called on disconnection. Framework handles reconnection automatically."""
+    broker.logger.warning("Streaming disconnected")
+```
+
+---
+
+## 9. Asset Inference in Converters (`broker.infer_asset`)
+
+In converter expressions, use `broker.infer_asset()` to map streaming symbols/tokens back to Asset objects:
+
+```python
+# Lookup by symbol (exact match against master data)
+"asset": {"source": "broker.infer_asset(symbol=data['symbol'])"}
+
+# Lookup by security_id/token (for numeric-token based brokers)
+"asset": {"source": "broker.infer_asset(security_id=str(data['token']))"}
+
+# Lookup by broker_symbol (if different from symbol)
+"asset": {"source": "broker.infer_asset(broker_symbol=data['instrument_key'])"}
+```
+
+- At least one keyword argument is required
+- Returns an `Asset` object from the asset finder (populated by master data)
+- Raises `SymbolNotFound` if no match — the framework logs a warning and skips the message
+- The keyword used must correspond to a field in your `MASTER_DATA_SPEC` mapping
+
+---
+
+## 10. ZMQ Backend (`zmq`)
+
+For ZeroMQ-based streaming (used in some internal/proprietary systems):
+
+```python
+"backend": {
+    "type": "zmq",
+    "options": {
+        "socket_type": "SUB",      # ZMQ socket type
+        "subscribe_filter": "",     # ZMQ topic filter (empty = all)
+    }
+}
+```
+
+ZMQ auth is typically handled at the transport/network level rather than via application-layer messages.
+
+---
+
+## 11. Complete Streaming Example (Multi-Connection)
+
+A broker with separate connections for market data and order updates:
+
+```python
+STREAMING_SPEC = {
+    "connections": {
+        "market_data": {
+            "url": "wss://stream.broker.com/market",
+            "backend": {"type": "websocket"},
+            "streams": ["data", "quote"],
+            "frame": "array",
+            "auth": {
+                "mode": "first_message",
+                "first_message": {
+                    "format": "json",
+                    "json": {"fields": {"token": {"source": "credentials.access_token"}}}
+                }
+            },
+            "subscribe": {
+                "subscribe": {
+                    "data": {
+                        "format": "json",
+                        "json": {"fields": {
+                            "type": {"source": "'subscribe'"},
+                            "channel": {"source": "'trades'"},
+                            "symbols": {"source": "[a.broker_symbol for a in subscribe_assets]"}
+                        }}
+                    },
+                    "quote": {
+                        "format": "json",
+                        "json": {"fields": {
+                            "type": {"source": "'subscribe'"},
+                            "channel": {"source": "'quotes'"},
+                            "symbols": {"source": "[a.broker_symbol for a in subscribe_assets]"}
+                        }}
+                    }
+                }
+            },
+            "parser": {"format": "json"},
+            "router": {
+                "enabled": True,
+                "rules": [
+                    {"channel": "data", "match": "data.get('channel') == 'trades'"},
+                    {"channel": "quote", "match": "data.get('channel') == 'quotes'"},
+                ]
+            },
+            "converters": {
+                "data": [{
+                    "fields": {
+                        "asset": {"source": "broker.infer_asset(symbol=data['symbol'])"},
+                        "timestamp": {"source": "pd.Timestamp(data['time'])"},
+                        "data": {
+                            "close": {"source": "float(data['price'])"},
+                            "volume": {"source": "float(data['volume'])"},
+                        }
+                    }
+                }],
+                "quote": [{
+                    "fields": {
+                        "asset": {"source": "broker.infer_asset(symbol=data['symbol'])"},
+                        "timestamp": {"source": "pd.Timestamp(data['time'])"},
+                        "bid": {"source": "float(data['bid'])"},
+                        "ask": {"source": "float(data['ask'])"},
+                        "last": {"source": "float(data.get('last', 0))"},
+                    }
+                }]
+            }
+        },
+        "trading": {
+            "url": "wss://stream.broker.com/trading",
+            "backend": {"type": "websocket"},
+            "streams": ["order"],
+            "auth": {
+                "mode": "first_message",
+                "first_message": {
+                    "format": "json",
+                    "json": {"fields": {"token": {"source": "credentials.access_token"}}}
+                }
+            },
+            "converters": {
+                "order": [{
+                    "fields": {
+                        "oid": {"source": "str(data['order_id'])"},
+                        "status": {"source": "mappings.order_status.to_blueshift(data['status'])"},
+                        "filled": {"source": "float(data.get('filled_qty', 0))"},
+                        "average_price": {"source": "float(data.get('avg_price', 0))"},
+                    }
+                }]
+            }
+        }
+    }
 }
 ```

@@ -16,7 +16,8 @@ Create a **single Python file** (e.g., `my_broker.py`) that fully implements the
 8.  **Streaming**: Consult `05_Streaming_Patterns.md` for specific guidance on WebSocket, SocketIO, or MQTT implementations.
 9.  **Master Data**: Consult `08_Master_Data_and_Streaming_Converters.md` for asset universe patterns.
 10. **Implement Custom Logic**: If the API requires complex logic (e.g., signing a request with HMAC-SHA256), write a Python function decorated with `@registry.register()` and reference it in the config using the `custom` field.
-11. **Validate**: Ensure your code follows the structure of `06_Reference_Implementation_Alpaca.py`.
+11. **Advanced Patterns**: Consult `10_Advanced_Patterns.md` for session management, custom headers, per-endpoint overrides, conditional fields, and full BROKER_SPEC options.
+12. **Validate**: Ensure your code follows the structure of `06_Reference_Implementation_Alpaca.py`.
 
 ## Critical Constraints
 *   **Do NOT create a class inheriting from `RestAPIBroker`**. The framework generates the class for you via `broker_class_factory`.
