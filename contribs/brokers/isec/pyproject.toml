@@ -1,0 +1,28 @@
+[build-system]
+requires = [
+    "pip",
+    "wheel",
+    "setuptools", 
+    "setuptools-scm",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "blueshift-broker-isec"
+version = "0.1.0"
+description = "ICICIDirect Breeze broker implementation for Blueshift trading platform"
+keywords = ["trading", "python", "algo", "quant", "systematic", "backtesting"]
+authors = [
+    {name = "QuantInsti Quantitative Learnings Pvt Ltd.", email = "blueshift-dev@quantinsti.com"},
+]
+maintainers = [
+  {name = "QuantInsti Quantitative Learnings Pvt Ltd.", email = "blueshift-dev@quantinsti.com"}
+]
+requires-python = ">=3.10"
+dependencies = [
+    "blueshift-core",
+    "blueshift-brokers",
+]
+
+[project.entry-points."blueshift.plugins.broker"]
+isec = "blueshift.contribs.brokers.isec"

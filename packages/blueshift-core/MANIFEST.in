@@ -1,0 +1,5 @@
+include pyproject.toml
+include setup.py
+recursive-include src *.py *.pyx *.pxd *.pyi *.md
+recursive-exclude src *.c *.cpp *.h
+global-exclude *.so *.pyd *.dll *.pyc __pycache__

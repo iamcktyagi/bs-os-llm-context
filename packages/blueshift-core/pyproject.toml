@@ -1,0 +1,65 @@
+[build-system]
+requires = [
+    "pip",
+    "wheel",
+    "setuptools",
+    "setuptools-scm",
+    "cython>=3",
+    "numpy>=1.23.0",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "blueshift-core"
+dynamic = ["version"]
+description = "Blueshift alogrithmic trading engine."
+keywords = ["trading", "python", "algo", "quant", "systematic", "backtesting"]
+authors = [
+    {name = "QuantInsti Quantitative Learnings Pvt Ltd.", email = "blueshift-dev@quantinsti.com"},
+]
+maintainers = [
+  {name = "QuantInsti Quantitative Learnings Pvt Ltd.", email = "blueshift-dev@quantinsti.com"}
+]
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Operating System :: OS Independent",
+    "Natural Language :: English",
+]
+dependencies = [
+    "numpy>=1.23.0",
+    "pandas>=2.1.0",
+    "httpx",
+    "pyzmq",
+    "rich",
+    "click"
+]
+
+[project.urls]
+homepage = "https://blueshift.quantinsti.com"
+documentation = "https://blueshift.quantinsti.com/api-docs/introduction.html"
+repository = "https://github.com/QuantInsti/blueshift-demo-strategies"
+
+[project.scripts]
+blueshift = "blueshift.cli.main:main"
+
+[project.entry-points."blueshift.commands"]
+config = "blueshift.cli.main:config"
+ls = "blueshift.commands.main:ls"
+run = "blueshift.cli.main:run"
+start = "blueshift.cli.main:start"
+ingest = "blueshift.cli.main:ingest"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["*.c", "*.h", "*.cpp",".docx",".html"]
+
+[tool.setuptools_scm]
+write_to = "src/blueshift/version.py"
+version_scheme = "release-branch-semver"
+local_scheme = "node-and-date"
+write_to_template = "__version__ = '{version}'\n"
+fallback_version = "0.0.0"

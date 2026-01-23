@@ -1,0 +1,45 @@
+[build-system]
+requires = [
+    "pip",
+    "wheel",
+    "setuptools", 
+    "setuptools-scm",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "blueshift-brokers"
+dynamic = ["version"]
+description = "Configuration-driven broker framework for blueshift alogrithmic trading engine."
+keywords = ["trading", "python", "algo", "quant", "systematic", "backtesting"]
+authors = [
+    {name = "QuantInsti Quantitative Learnings Pvt Ltd.", email = "blueshift-dev@quantinsti.com"},
+]
+maintainers = [
+  {name = "QuantInsti Quantitative Learnings Pvt Ltd.", email = "blueshift-dev@quantinsti.com"}
+]
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Operating System :: OS Independent",
+    "Natural Language :: English",
+]
+dependencies = [
+    "blueshift-core",
+]
+
+[project.urls]
+homepage = "https://blueshift.quantinsti.com"
+documentation = "https://blueshift.quantinsti.com/api-docs/introduction.html"
+repository = "https://github.com/QuantInsti/blueshift-demo-strategies"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.setuptools_scm]
+write_to = "src/blueshift/version.py"
+version_scheme = "release-branch-semver"
+local_scheme = "node-and-date"
+write_to_template = "__version__ = '{version}'\n"
+fallback_version = "0.0.0"

@@ -1,0 +1,25 @@
+[build-system]
+requires = [
+    "pip>=23.1.0",
+    "wheel",
+    "setuptools>=60.9.0", 
+    "setuptools-scm>=3.3.3",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "blueshift-broker-kite"
+version = "0.1.0"
+description = "Zerodha Kite broker implementation for Blueshift trading platform"
+requires-python = ">=3.8"
+dependencies = [
+    "blueshift-brokers",
+    "blueshift-core",
+]
+
+[project.entry-points."blueshift.plugins.broker"]
+kite = "blueshift.contribs.brokers.kite"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = ["blueshift.contribs.brokers.kite"]
