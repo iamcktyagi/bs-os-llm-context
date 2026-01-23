@@ -24,9 +24,9 @@ Send API keys in the initial connection headers.
     "mode": "headers",
     "headers": {
         "fields": {
-            "Authorization": "Bearer {{ api_key }}",
-            "APCA-API-KEY-ID": "{{ api_key }}",
-            "APCA-API-SECRET-KEY": "{{ api_secret }}"
+            "Authorization": {"source": "f'Bearer {credentials.api_key}'"},
+            "APCA-API-KEY-ID": {"source": "credentials.api_key"},
+            "APCA-API-SECRET-KEY": {"source": "credentials.api_secret"}
         }
     }
 }
@@ -41,9 +41,9 @@ Send a specific JSON message immediately after connecting.
         "format": "json",
         "json": {
             "fields": {
-                "action": "auth",
-                "key": "{{ api_key }}",
-                "secret": "{{ api_secret }}"
+                "action": {"source": "'auth'"},
+                "key": {"source": "credentials.api_key"},
+                "secret": {"source": "credentials.api_secret"}
             }
         }
     }
@@ -58,7 +58,7 @@ Append tokens to the connection URL.
     "url": {
         "query": {
             "fields": {
-                "token": "{{ access_token }}"
+                "token": {"source": "credentials.access_token"}
             }
         }
     }
@@ -69,12 +69,26 @@ Append tokens to the connection URL.
 ```python
 "subscribe": {
     "subscribe": {
-        "format": "json",
-        "json": {
-            "fields": {
-                "action": "subscribe",
-                "trades": ["{{ symbol }}"], # Variable substitution
-                "quotes": ["{{ symbol }}"]
+        "all": {
+            "format": "json",
+            "json": {
+                "fields": {
+                    "action": {"source": "'subscribe'"},
+                    "trades": {"source": "[asset.broker_symbol or asset.symbol]"},
+                    "quotes": {"source": "[asset.broker_symbol or asset.symbol]"}
+                }
+            }
+        }
+    },
+    "unsubscribe": {
+        "all": {
+            "format": "json",
+            "json": {
+                "fields": {
+                    "action": {"source": "'unsubscribe'"},
+                    "trades": {"source": "[asset.broker_symbol or asset.symbol]"},
+                    "quotes": {"source": "[asset.broker_symbol or asset.symbol]"}
+                }
             }
         }
     }
@@ -111,8 +125,8 @@ SocketIO often uses query parameters or initial handshake headers.
     "url": {
         "query": {
             "fields": {
-                "token": "{{ access_token }}",
-                "uid": "{{ user_id }}"
+                "token": {"source": "credentials.access_token"},
+                "uid": {"source": "credentials.user_id"}
             }
         }
     }
@@ -124,12 +138,13 @@ SocketIO uses "events" rather than raw messages. The `subscribe` payload should 
 ```python
 "subscribe": {
     "subscribe": {
-        "format": "json",
-        "json": {
-            "fields": {
-                # In SocketIO context, this might imply emitting an event
-                "type": "subscribe",
-                "channels": ["{{ symbol }}"]
+        "all": {
+            "format": "json",
+            "json": {
+                "fields": {
+                    "type": {"source": "'subscribe'"},
+                    "channels": {"source": "[asset.broker_symbol or asset.symbol]"}
+                }
             }
         }
     }
@@ -184,7 +199,29 @@ MQTT subscriptions are based on Topics and QoS (Quality of Service).
 
 ---
 
-## 4. Custom Parsing & Handling
+## 4. Text Template Messages (`format: "text"`)
+
+Some providers expect text frames instead of JSON. Use Python `str.format(...)` with `tokens`.
+
+```python
+"subscribe": {
+    "subscribe": {
+        "all": {
+            "format": "text",
+            "text": "SUB {symbol}",
+            "tokens": {
+                "fields": {
+                    "symbol": {"source": "asset.broker_symbol or asset.symbol"}
+                }
+            }
+        }
+    }
+}
+```
+
+---
+
+## 5. Custom Parsing & Handling
 
 For any protocol, if the standard JSON/Text parsers are insufficient (e.g., binary protocols, complex nested structures), use `custom` callables.
 

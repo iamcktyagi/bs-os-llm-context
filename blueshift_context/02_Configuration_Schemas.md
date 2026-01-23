@@ -7,22 +7,30 @@ Almost every value in the configuration is a `field_spec`. It tells the framewor
 
 ```python
 {
-    "source": "expression",      # Python expression evaluated in context
-    "condition": "expression",   # Optional: If False, field is skipped/null
-    "transform": "function",     # Optional: Function applied to the source result
-    "default_value": "value"     # Optional: Fallback if source fails
+    "source": "expression",      # Python expression evaluated in runtime context
+    "condition": "expression",   # Optional: If False, field is skipped (NULL sentinel)
+    "transform": "callable_ref", # Optional: Callable applied after source (gets value + context)
+    "custom": "callable_ref",    # Optional: Callable that returns the final value (ignores source/transform)
+    "default_value": "value"     # Optional: Fallback if source evaluation fails
 }
 ```
 **Examples:**
 *   `{"source": "credentials.api_key"}` -> Variable access
 *   `{"source": "'constant_string'"}` -> Constant string
 *   `{"source": "mappings.order_side.from_blueshift(order.side)"}` -> Enum conversion
+*   `{"source": "None", "custom": "sign_request"}` -> Delegate to custom Python logic (auth/signing)
+
+Notes:
+*   `source` expressions are evaluated in a safe Python environment that includes both the runtime context (e.g., `order`, `asset`, `credentials`, `response`) and any functions registered in `ConfigRegistry`.
+*   `callable_ref` values must reference a registered function name (via `@registry.register(...)`) or an importable reference supported by the framework.
 
 ## 2. `BROKER_SPEC`
 Defines global options and enum mappings.
 
 ```python
 BROKER_SPEC = {
+    "name": "mybroker",          # Required: broker identifier
+    "variant": "live",           # Optional: variant name (e.g., "live", "paper")
     "calendar": "NYSE",          # Trading calendar (NYSE, NSE, etc.)
     "credentials": {
         "fields": ["api_key", "secret"], # Required fields in blueshift.yaml
@@ -62,6 +70,7 @@ API_SPEC = {
             "Authorization": {"source": "f'Bearer {credentials.api_key}'"}
         }
     },
+    "master_data": [ ... ], # Optional but recommended: instrument universe & symbol/id mapping
     "endpoints": {
         "get_orders": { ... },
         "place_order": { ... },
@@ -73,6 +82,12 @@ API_SPEC = {
     }
 }
 ```
+
+Minimum contract:
+*   The framework requires `get_orders`, `place_order`, `cancel_order`, and `get_account`.
+*   It also requires at least one of `get_history` or `get_history_multi`.
+See `07_Broker_Integration_Contract.md` for return-shape requirements.
+See `08_Master_Data_and_Streaming_Converters.md` for master data patterns.
 
 ### Endpoint Definition
 ```python
@@ -102,6 +117,7 @@ API_SPEC = {
 Defines real-time streaming connections (WebSocket, SocketIO, MQTT).
 
 For detailed patterns and examples for each protocol, see **[05_Streaming_Patterns.md](./05_Streaming_Patterns.md)**.
+For converter pipelines and master-data-driven asset mapping, see **[08_Master_Data_and_Streaming_Converters.md](./08_Master_Data_and_Streaming_Converters.md)**.
 
 ```python
 STREAMING_SPEC = {

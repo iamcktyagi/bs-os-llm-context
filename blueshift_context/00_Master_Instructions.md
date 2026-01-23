@@ -7,13 +7,14 @@ Create a **single Python file** (e.g., `my_broker.py`) that fully implements the
 
 ## Workflow
 1.  **Understand the Architecture**: Read `01_Architecture_and_Flow.md` to understand how the Configuration-Driven framework works.
-2.  **Analyze the API**: Review the provided Broker API Documentation to identify endpoints for Orders, Positions, Account, and Market Data.
-3.  **Map the Types**: Consult `03_Type_Definitions.md` to ensure you are mapping API values (e.g., "BUY") to the correct Blueshift Enums (e.g., `OrderSide.BUY`) and using the correct Asset attributes.
-4.  **Fill the Template**: Use `04_Template.py` as your starting point. Do not start from scratch.
-5.  **Configure**: Use `02_Configuration_Schemas.md` to fill in `BROKER_SPEC`, `API_SPEC`, `STREAMING_SPEC`, and `OBJECTS_SPEC`.
-6.  **Streaming**: Consult `05_Streaming_Patterns.md` for specific guidance on WebSocket, SocketIO, or MQTT implementations.
-7.  **Implement Custom Logic**: If the API requires complex logic (e.g., signing a request with HMAC-SHA256), write a Python function decorated with `@registry.register()` and reference it in the config using the `custom` field.
-8.  **Validate**: Ensure your code follows the structure of `06_Reference_Implementation_Alpaca.py`.
+2.  **Confirm the Contract**: Read `07_Broker_Integration_Contract.md` to confirm required endpoints and return-shape requirements.
+3.  **Analyze the API**: Review the provided Broker API Documentation to identify endpoints for Orders, Positions, Account, and Market Data.
+4.  **Map the Types**: Consult `03_Type_Definitions.md` to ensure you are mapping API values (e.g., "BUY") to the correct Blueshift Enums (e.g., `OrderSide.BUY`) and using the correct Asset attributes.
+5.  **Fill the Template**: Use `04_Template.py` as your starting point. Do not start from scratch.
+6.  **Configure**: Use `02_Configuration_Schemas.md` to fill in `BROKER_SPEC`, `API_SPEC`, `STREAMING_SPEC`, and `OBJECTS_SPEC`.
+7.  **Streaming**: Consult `05_Streaming_Patterns.md` for specific guidance on WebSocket, SocketIO, or MQTT implementations.
+8.  **Implement Custom Logic**: If the API requires complex logic (e.g., signing a request with HMAC-SHA256), write a Python function decorated with `@registry.register()` and reference it in the config using the `custom` field.
+9.  **Validate**: Ensure your code follows the structure of `06_Reference_Implementation_Alpaca.py`.
 
 ## Critical Constraints
 *   **Do NOT create a class inheriting from `RestAPIBroker`**. The framework generates the class for you via `broker_class_factory`.

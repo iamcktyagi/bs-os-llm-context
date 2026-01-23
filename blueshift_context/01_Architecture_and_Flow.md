@@ -29,17 +29,24 @@ def my_auth_header(api_key, **kwargs):
 }
 ```
 
+There are two common ways to “invoke” registered logic:
+*   **Inline via `source`**: Call the function directly inside a `source` expression (as above). This behaves like normal Python evaluation.
+*   **Via `custom` callable references**: Many schema sections accept a `custom` field containing the registry function name. In this mode, the framework calls the function with the runtime context as keyword arguments.
+
 ### 3. The Expression Engine
 The framework evaluates string values in the configuration as Python expressions.
 *   **Context**: The expressions have access to a context containing:
     *   `credentials` (your API keys)
     *   `order` (the Order object being placed)
     *   `asset` (the Asset object)
-    *   `registry` functions
+    *   any functions registered into `ConfigRegistry` (by name)
 *   **Syntax**: Standard Python syntax.
     *   `"source": "credentials.api_key"` -> Accesses the API key.
     *   `"source": "'active'"` -> Returns the string "active".
     *   `"source": "100 * float(data['price'])"` -> Math operations.
+
+Streaming note:
+*   Streaming message definitions support JSON messages built from `fields_group` (same `source` rules), and text messages built using Python `str.format(...)` templates (not `{{ }}` templating).
 
 ## Data Flow
 

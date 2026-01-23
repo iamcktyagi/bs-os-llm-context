@@ -132,9 +132,19 @@ BROKER_VARIANTS = {
 def create_config(variant) -> APIBrokerConfig:
     broker_spec = dict(BROKER_SPEC)
     api_spec = dict(API_SPEC)
-    # Merge variant specific overrides...
-    # (Implementation handled in reference example)
-    return APIBrokerConfig(broker_spec, api_spec, {}, {}, registry=registry)
+    obj_spec = dict(OBJECTS_SPEC)
+    stream_spec = dict(STREAMING_SPEC)
+    api_spec["master_data"] = MASTER_DATA_SPEC.copy()
+
+    variant_specs = dict(BROKER_VARIANTS).get(variant)
+    if variant_specs:
+        broker_spec = merge_json_recursive(broker_spec, variant_specs.get("broker", {}))
+        api_spec = merge_json_recursive(api_spec, variant_specs.get("api", {}))
+        obj_spec = merge_json_recursive(obj_spec, variant_specs.get("objects", {}))
+        stream_spec = merge_json_recursive(stream_spec, variant_specs.get("streaming", {}))
+        broker_spec["variant"] = variant
+
+    return APIBrokerConfig(broker_spec, api_spec, obj_spec, stream_spec, registry=registry)
 
 def register_brokers():
     for variant in BROKER_VARIANTS:
