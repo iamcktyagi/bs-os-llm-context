@@ -14,10 +14,10 @@ Two base URLs:
   - api.upstox.com for everything else (positions, funds, history, quotes)
 """
 from __future__ import annotations
-import json
 import pandas as pd
 from urllib.parse import quote
 
+from blueshift.lib.common.sentinels import noop
 from blueshift.lib.common.constants import Frequency
 from blueshift.lib.common.functions import merge_json_recursive, to_title_case
 from blueshift.lib.trades._order_types import (
@@ -80,8 +80,8 @@ def upstox_intraday_endpoint(asset, freq, **kwargs) -> str:
 def upstox_history_request(**context):
     """
     Custom request for get_history.
-    Determines whether to use historical or intraday endpoint based on frequency,
-    then makes the request.
+    Builds the URL with path parameters, makes the HTTP call,
+    and returns a DataFrame directly.
     """
     asset = context['asset']
     freq = context['freq']
@@ -107,7 +107,7 @@ def upstox_history_request(**context):
     success, status_code, response = api.raw_request(url, "GET", headers, {}, {}, {})
 
     if not success:
-        return []
+        return pd.DataFrame()
 
     # Response: {"status":"success","data":{"candles":[[ts,O,H,L,C,V,OI],...]}}
     candles = []
@@ -115,7 +115,10 @@ def upstox_history_request(**context):
         data = response.get('data', {})
         candles = data.get('candles', [])
 
-    # Convert to list of dicts for the framework
+    if not candles:
+        return pd.DataFrame()
+
+    # Convert to DataFrame: each candle is [timestamp, O, H, L, C, V, OI]
     records = []
     for c in candles:
         if len(c) >= 6:
@@ -128,7 +131,13 @@ def upstox_history_request(**context):
                 'volume': float(c[5]),
             })
 
-    return records
+    if not records:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(records)
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df = df.set_index('timestamp').sort_index()
+    return df
 
 
 @registry.register()
@@ -141,30 +150,6 @@ def upstox_product_type(order, **kwargs) -> str:
     elif order.product_type == ProductType.MARGIN:
         return "MTF"
     return "D"
-
-
-@registry.register()
-def upstox_parse_positions(response, broker, **kwargs) -> list:
-    """
-    Parse positions from Upstox response.
-    Upstox returns net quantity as 'quantity' (positive=long, negative=short).
-    Also provides day_buy_quantity, day_sell_quantity, etc.
-    """
-    if not isinstance(response, dict):
-        return []
-
-    data = response.get('data', [])
-    if not data:
-        return []
-
-    positions = []
-    for item in data:
-        qty = int(item.get('quantity', 0) or 0)
-        if qty == 0:
-            continue
-        positions.append(item)
-
-    return positions
 
 
 # -------------------------------------------------------------------------
@@ -413,7 +398,7 @@ MARKET_DATA_ENDPOINTS = {
         },
         "response": {
             "payload_type": "custom",
-            "custom": "upstox_parse_history_response",
+            "custom": "noop",
         },
     },
 
@@ -441,23 +426,6 @@ MARKET_DATA_ENDPOINTS = {
         },
     },
 }
-
-
-@registry.register()
-def upstox_parse_history_response(response, **kwargs):
-    """
-    Parse the history response stored by upstox_history_request.
-    The custom request already returns the parsed records list.
-    """
-    # When custom request is used, the response is the return value
-    if isinstance(response, list):
-        if not response:
-            return pd.DataFrame()
-        df = pd.DataFrame(response)
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
-        df = df.set_index('timestamp').sort_index()
-        return df
-    return pd.DataFrame()
 
 
 API_SPEC = {
