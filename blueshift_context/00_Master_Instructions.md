@@ -36,3 +36,5 @@ A complete, ready-to-run Python file that:
 3.  Defines helper functions (Auth, Parsing).
 4.  Defines the Configuration Dictionaries.
 5.  Implements `register_brokers()` to load the configuration.
+
+Always ignore the login flow, as the user will always provide you a valid token (of any type) to perform authenticated requests.
