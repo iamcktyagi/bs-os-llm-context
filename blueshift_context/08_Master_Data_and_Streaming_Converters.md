@@ -18,13 +18,14 @@ To avoid hardcoding these mappings (and to make streaming routing possible), con
 `API_SPEC["master_data"]` is a list of master-data definitions. Each definition fetches some instrument dataset (CSV/JSON) and declares how to extract one or more Blueshift asset classes from it.
 
 ```python
+# Example master data configuration - replace field names with your broker's specifics
 API_SPEC = {
-    "base_url": "https://api.broker.com",
+    "base_url": "https://api.<broker>.com",
     "master_data": [
         {
             "preload": True,
             "endpoint": {
-                "endpoint": "/instruments",
+                "endpoint": "/<INSTRUMENTS_ENDPOINT>",  # e.g., "/instruments", "/assets"
                 "method": "GET",
                 "response": {
                     "payload_type": "array",
@@ -37,16 +38,17 @@ API_SPEC = {
             "assets": [
                 {
                     "asset_class": "equity",
-                    "filter": "row.get('segment') == 'EQ'",
+                    # Replace filter/mapping field names with your broker's response structure
+                    "filter": "row.get('<SEGMENT_FIELD>') == '<EQUITY_SEGMENT>'",
                     "mapping": {
-                        "symbol": {"source": "row['tradingsymbol']"},
-                        "broker_symbol": {"source": "row['tradingsymbol']"},
-                        "security_id": {"source": "str(row['instrument_token'])"},
-                        "exchange_name": {"source": "row.get('exchange', 'NSE')"},
+                        "symbol": {"source": "row['<SYMBOL_FIELD>']"},
+                        "broker_symbol": {"source": "row['<SYMBOL_FIELD>']"},
+                        "security_id": {"source": "str(row['<TOKEN_FIELD>'])"},
+                        "exchange_name": {"source": "row.get('<EXCHANGE_FIELD>', '<DEFAULT_EXCHANGE>')"},
                     },
                     "details": {
-                        "tick_size": {"source": "float(row.get('tick_size', 0.05))"},
-                        "mult": {"source": "float(row.get('lot_size', 1))"},
+                        "tick_size": {"source": "float(row.get('<TICK_SIZE_FIELD>', 0.05))"},
+                        "mult": {"source": "float(row.get('<LOT_SIZE_FIELD>', 1))"},
                     }
                 }
             ],
@@ -144,10 +146,12 @@ For large instrument files (10K+ instruments), vectorized mode uses pandas opera
 - Context variable: `data` (DataFrame) instead of `row`/`item` (dict)
 
 ### Example: Equity + Indices from CSV
+This example shows vectorized processing for large instrument files. Replace field names and filter conditions with your broker's specifics.
+
 ```python
 {
     "endpoint": {
-        "endpoint": "https://broker.com/instruments.csv",
+        "endpoint": "https://<broker>.com/instruments.csv",
         "method": "GET",
         "use_global_headers": False,
         "response": {"payload_type": "object", "result": {"fields": {}}}  # Dummy for file mode
@@ -157,32 +161,32 @@ For large instrument files (10K+ instruments), vectorized mode uses pandas opera
     "csv_options": {"dtype": "str"},  # Force all columns to string (prevents type issues)
     "assets": [
         {
-            # Equity: filter by segment and series
-            "filter": "(data['Exchange'] == 'NSE') & (data['Series'] == 'EQ') & (data['TickSize'].astype('float') > 0)",
+            # Equity: filter by segment/series - replace with your broker's column names
+            "filter": "(data['<EXCHANGE_COL>'] == '<EXCHANGE>') & (data['<SERIES_COL>'] == '<EQUITY_SERIES>') & (data['<TICK_SIZE_COL>'].astype('float') > 0)",
             "asset_class": "equity",
             "vectorized": True,
             "mapping": {
-                "symbol": {"source": "data['TradingSymbol']"},
-                "broker_symbol": {"source": "data['InstrumentCode']"},
-                "security_id": {"source": "data['Token']"},
-                "name": {"source": "data['Name']"},
-                "tick_size": {"source": "1/data['TickSize'].astype(float)"},
-                "exchange_name": {"source": "'NSE'"},
-                "calendar_name": {"source": "'NSE'"},
+                "symbol": {"source": "data['<SYMBOL_COL>']"},
+                "broker_symbol": {"source": "data['<BROKER_SYMBOL_COL>']"},
+                "security_id": {"source": "data['<TOKEN_COL>']"},
+                "name": {"source": "data['<NAME_COL>']"},
+                "tick_size": {"source": "1/data['<TICK_SIZE_COL>'].astype(float)"},
+                "exchange_name": {"source": "'<EXCHANGE>'"},
+                "calendar_name": {"source": "'<CALENDAR>'"},
             }
         },
         {
-            # Indices: no tick size, different filter
-            "filter": "(data['Exchange'] == 'NSE') & (data['Series'] == '0') & (data['TickSize'].astype('float') == 0)",
+            # Indices: market data only (non-tradeable)
+            "filter": "(data['<EXCHANGE_COL>'] == '<EXCHANGE>') & (data['<SERIES_COL>'] == '<INDEX_SERIES>')",
             "asset_class": "mktdata",
             "vectorized": True,
             "mapping": {
-                "symbol": {"source": "data['TradingSymbol'].str.replace(' ','')"},
-                "broker_symbol": {"source": "data['InstrumentCode']"},
-                "security_id": {"source": "data['Token']"},
-                "name": {"source": "data['Name']"},
-                "exchange_name": {"source": "'NSE'"},
-                "calendar_name": {"source": "'NSE'"},
+                "symbol": {"source": "data['<SYMBOL_COL>'].str.replace(' ','')"},
+                "broker_symbol": {"source": "data['<BROKER_SYMBOL_COL>']"},
+                "security_id": {"source": "data['<TOKEN_COL>']"},
+                "name": {"source": "data['<NAME_COL>']"},
+                "exchange_name": {"source": "'<EXCHANGE>'"},
+                "calendar_name": {"source": "'<CALENDAR>'"},
             }
         }
     ]
@@ -191,30 +195,32 @@ For large instrument files (10K+ instruments), vectorized mode uses pandas opera
 
 ## 4) Derivatives Master Data (Futures & Options)
 
-For brokers supporting derivatives, configure `equity-futures` and `equity-options` asset classes:
+For brokers supporting derivatives, configure `equity-futures` and `equity-options` asset classes.
+Replace the placeholder values with your broker's specific column names and exchange identifiers.
 
 ### Futures
 ```python
 {
-    "filter": "(data['Exchange'] == 'NFO') & (data['ContractDesc'].str.contains('FUT-'))",
+    # Replace filter conditions with your broker's column names and values
+    "filter": "(data['<EXCHANGE_COL>'] == '<DERIVATIVES_EXCHANGE>') & (data['<CONTRACT_DESC_COL>'].str.contains('<FUTURES_IDENTIFIER>'))",
     "asset_class": "equity-futures",
     "vectorized": True,
     "details": {
-        "underlying_exchange": {"source": "'NSE'"},  # Where the underlying trades
+        "underlying_exchange": {"source": "'<UNDERLYING_EXCHANGE>'"},  # Where the underlying trades
         "expiry_types": {"source": "['monthly']"},   # ['monthly', 'weekly']
     },
     "mapping": {
         "symbol": {"source": "''"},  # Leave empty: framework infers from underlying + expiry
-        "broker_symbol": {"source": "data['InstrumentCode']"},
-        "security_id": {"source": "data['Token']"},
-        "name": {"source": "data['Name']"},
-        "tick_size": {"source": "100/data['TickSize'].astype(float)"},
-        "exchange_name": {"source": "'NFO'"},
-        "calendar_name": {"source": "'NFO'"},
-        "underlying": {"source": "data['UnderlyingSymbol'].str.replace(' ','')"},
-        "root": {"source": "data['UnderlyingSymbol']"},
-        "mult": {"source": "data['LotSize'].astype(int)"},
-        "expiry_date": {"source": "pd.to_datetime(data['Expiry'])"},
+        "broker_symbol": {"source": "data['<BROKER_SYMBOL_COL>']"},
+        "security_id": {"source": "data['<TOKEN_COL>']"},
+        "name": {"source": "data['<NAME_COL>']"},
+        "tick_size": {"source": "<TICK_SIZE_FORMULA>"},  # e.g., "100/data['TickSize'].astype(float)"
+        "exchange_name": {"source": "'<DERIVATIVES_EXCHANGE>'"},
+        "calendar_name": {"source": "'<CALENDAR>'"},
+        "underlying": {"source": "data['<UNDERLYING_COL>'].str.replace(' ','')"},
+        "root": {"source": "data['<UNDERLYING_COL>']"},
+        "mult": {"source": "data['<LOT_SIZE_COL>'].astype(int)"},
+        "expiry_date": {"source": "pd.to_datetime(data['<EXPIRY_COL>'])"},
     }
 }
 ```
@@ -222,26 +228,27 @@ For brokers supporting derivatives, configure `equity-futures` and `equity-optio
 ### Options
 ```python
 {
-    "filter": "(data['Exchange'] == 'NFO') & (data['ContractDesc'].str.contains('OPT-'))",
+    # Replace filter conditions with your broker's column names and values
+    "filter": "(data['<EXCHANGE_COL>'] == '<DERIVATIVES_EXCHANGE>') & (data['<CONTRACT_DESC_COL>'].str.contains('<OPTIONS_IDENTIFIER>'))",
     "asset_class": "equity-options",
     "vectorized": True,
     "details": {
-        "underlying_exchange": {"source": "'NSE'"},
+        "underlying_exchange": {"source": "'<UNDERLYING_EXCHANGE>'"},
     },
     "mapping": {
         "symbol": {"source": "''"},  # Inferred from underlying + expiry + strike + type
-        "broker_symbol": {"source": "data['InstrumentCode']"},
-        "security_id": {"source": "data['Token']"},
-        "name": {"source": "data['Name']"},
-        "tick_size": {"source": "100/data['TickSize'].astype(float)"},
-        "exchange_name": {"source": "'NFO'"},
-        "calendar_name": {"source": "'NFO'"},
-        "underlying": {"source": "data['UnderlyingSymbol'].str.replace(' ','')"},
-        "root": {"source": "data['UnderlyingSymbol']"},
-        "mult": {"source": "data['LotSize'].astype(int)"},
-        "expiry_date": {"source": "pd.to_datetime(data['Expiry'])"},
-        "option_type": {"source": "data['OptionType']"},   # 'CE'/'PE' or 'call'/'put'
-        "strike": {"source": "data['StrikePrice'].astype(float)"},
+        "broker_symbol": {"source": "data['<BROKER_SYMBOL_COL>']"},
+        "security_id": {"source": "data['<TOKEN_COL>']"},
+        "name": {"source": "data['<NAME_COL>']"},
+        "tick_size": {"source": "<TICK_SIZE_FORMULA>"},
+        "exchange_name": {"source": "'<DERIVATIVES_EXCHANGE>'"},
+        "calendar_name": {"source": "'<CALENDAR>'"},
+        "underlying": {"source": "data['<UNDERLYING_COL>'].str.replace(' ','')"},
+        "root": {"source": "data['<UNDERLYING_COL>']"},
+        "mult": {"source": "data['<LOT_SIZE_COL>'].astype(int)"},
+        "expiry_date": {"source": "pd.to_datetime(data['<EXPIRY_COL>'])"},
+        "option_type": {"source": "data['<OPTION_TYPE_COL>']"},   # 'CE'/'PE' or 'call'/'put'
+        "strike": {"source": "data['<STRIKE_COL>'].astype(float)"},
     }
 }
 ```
@@ -256,7 +263,7 @@ For brokers supporting derivatives, configure `equity-futures` and `equity-optio
 | `expiry_date` | Yes | Contract expiry (pd.Timestamp or parseable string) |
 | `option_type` | Options only | `"CE"`/`"PE"` or `"call"`/`"put"` |
 | `strike` | Options only | Strike price (float) |
-| `exchange_name` | Yes | Derivatives exchange (e.g., `"NFO"`, `"BFO"`) |
+| `exchange_name` | Yes | Derivatives exchange (e.g., `"CME"`, `"NFO"`, `"BFO"`) |
 
 ## 5) File Mode Details
 
@@ -265,7 +272,7 @@ For brokers that provide instrument data as downloadable files:
 ```python
 {
     "endpoint": {
-        "endpoint": "https://broker.com/data/instruments.csv",
+        "endpoint": "https://<broker>.com/data/instruments.csv",
         "method": "GET",
         "use_global_headers": False,  # Public URL, no auth needed
         "response": {"payload_type": "object", "result": {"fields": {}}}
@@ -288,13 +295,15 @@ For brokers that provide instrument data as downloadable files:
 - `"gzip"`: file is gzip-compressed
 
 ### API Mode (JSON from REST endpoint)
+Replace placeholder values with your broker's specifics:
+
 ```python
 {
     "endpoint": {
-        "endpoint": "/api/instruments",
+        "endpoint": "/<INSTRUMENTS_ENDPOINT>",  # e.g., "/api/instruments", "/assets"
         "method": "GET",
         "request": {
-            "query": {"fields": {"status": {"source": "'active'"}}}
+            "query": {"fields": {"<STATUS_PARAM>": {"source": "'active'"}}}
         },
         "response": {"payload_type": "array", "items": {"fields": {}}}
     },
@@ -303,13 +312,14 @@ For brokers that provide instrument data as downloadable files:
     "assets": [
         {
             "asset_class": "equity",
-            "filter": "item.get('tradable') and item.get('status') == 'active'",
+            # Replace field names with your broker's response structure
+            "filter": "item.get('<TRADABLE_FIELD>') and item.get('<STATUS_FIELD>') == 'active'",
             "mapping": {
-                "symbol": {"source": "item['symbol']"},
-                "security_id": {"source": "item.get('id', item['symbol'])"},
-                "name": {"source": "item.get('name', '')"},
-                "exchange_name": {"source": "item.get('exchange', 'NYSE')"},
-                "calendar_name": {"source": "'NYSE'"},
+                "symbol": {"source": "item['<SYMBOL_FIELD>']"},
+                "security_id": {"source": "item.get('<ID_FIELD>', item['<SYMBOL_FIELD>'])"},
+                "name": {"source": "item.get('<NAME_FIELD>', '')"},
+                "exchange_name": {"source": "item.get('<EXCHANGE_FIELD>', '<DEFAULT_EXCHANGE>')"},
+                "calendar_name": {"source": "'<CALENDAR>'"},
             }
         }
     ]

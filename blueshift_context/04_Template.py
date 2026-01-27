@@ -1,5 +1,5 @@
 """
-[Broker Name] REST API broker integration for Blueshift.
+[REPLACE: Broker Name] REST API broker integration for Blueshift.
 
 Implements:
 - Broker spec (credentials, options, enum mappings)
@@ -7,6 +7,13 @@ Implements:
 - Streaming spec (WebSocket/SocketIO real-time data)
 - Objects spec (order/position/account conversions)
 - Master data spec (asset universe)
+
+INSTRUCTIONS:
+1. Search for "REPLACE:" comments and update all placeholder values
+2. Search for "<...>" placeholders and replace with actual broker values
+3. Remove example code that doesn't apply to your broker
+4. Update enum mappings to match your broker's API strings
+5. Test each endpoint individually before full integration
 """
 from __future__ import annotations
 import pandas as pd
@@ -32,22 +39,28 @@ from blueshift.brokers.factory import broker_class_factory
 # Registry Initialization
 # -------------------------------------------------------------------------
 registry = ConfigRegistry(globals())
-cal = get_calendar('NYSE')  # Change to appropriate calendar (NYSE, NSE, etc.)
+
+# REPLACE: Use the appropriate calendar for your broker's market
+# Common calendars: "NYSE" (US), "NSE" (India), "LSE" (UK), "XETR" (Germany), etc.
+cal = get_calendar('<CALENDAR_NAME>')  # e.g., 'NYSE', 'NSE', 'LSE'
 
 # -------------------------------------------------------------------------
 # Helper Functions (Registered)
 # -------------------------------------------------------------------------
 @registry.register()
-def my_broker_timeframe(freq, **kwargs):
-    """Map Blueshift Frequency -> Broker interval string."""
+def broker_timeframe(freq, **kwargs):
+    """
+    Map Blueshift Frequency -> Broker interval string.
+    REPLACE: Update the mapping values to match your broker's API timeframe strings.
+    """
     mapping = {
-        Frequency('1m'): '1Min',
-        Frequency('5m'): '5Min',
-        Frequency('15m'): '15Min',
-        Frequency('1h'): '1Hour',
-        Frequency('1d'): '1Day',
+        Frequency('1m'): '<1_MINUTE>',   # e.g., '1Min', '1m', '1minute'
+        Frequency('5m'): '<5_MINUTE>',   # e.g., '5Min', '5m', '5minute'
+        Frequency('15m'): '<15_MINUTE>', # e.g., '15Min', '15m', '15minute'
+        Frequency('1h'): '<1_HOUR>',     # e.g., '1Hour', '1h', '60minute'
+        Frequency('1d'): '<1_DAY>',      # e.g., '1Day', '1d', 'day'
     }
-    return mapping.get(freq, '1Min')
+    return mapping.get(freq, '<DEFAULT_TIMEFRAME>')
 
 # Example: custom auth header signing (for brokers requiring HMAC/signing)
 @registry.register()
@@ -96,52 +109,75 @@ def custom_session_init(**context):
 # BROKER_SPEC
 # -------------------------------------------------------------------------
 BROKER_SPEC = {
-    "name": "mybroker",
-    "calendar": "NYSE",
+    # REPLACE: Unique identifier for your broker (lowercase, alphanumeric + hyphens)
+    "name": "<broker_name>",
+
+    # REPLACE: Trading calendar for this broker's market
+    "calendar": "<CALENDAR_NAME>",  # e.g., "NYSE", "NSE", "LSE"
+
     "credentials": {
-        "fields": ["api_key", "api_secret", "access_token"],
+        # REPLACE: List all credential fields your broker requires
+        "fields": ["api_key", "api_secret", "access_token"],  # Add/remove as needed
         "validator": "credentials.api_key and credentials.api_secret",
     },
     "options": {
         "timeout": 10,
-        "rate_limit": 10,
-        "rate_limit_period": 1,
-        "max_tickers": 200,
-        "supported_modes": ["LIVE", "PAPER"],
-        "fractional_trading": False,
+        "rate_limit": 10,        # REPLACE: Requests per period (check broker docs)
+        "rate_limit_period": 1,  # REPLACE: Period in seconds
+        "max_tickers": 200,      # REPLACE: Max symbols per request
+        "supported_modes": ["LIVE", "PAPER"],  # REPLACE: Remove "PAPER" if not supported
+        "fractional_trading": False,  # REPLACE: True if broker supports fractional shares
         "max_page_fetch": 10,
     },
-    "assets": ["equity"],
 
-    # ENUM MAPPINGS
+    # REPLACE: Asset classes supported by this broker
+    "assets": ["equity"],  # Options: "equity", "equity-futures", "equity-options", "crypto", "fx"
+
+    # REPLACE: Map Blueshift enums to broker's string values
+    # These mappings depend entirely on what strings your broker's API uses
     "order_side": {
-        "map": {OrderSide.BUY: "buy", OrderSide.SELL: "sell"}
+        "map": {
+            OrderSide.BUY: "<BUY_STRING>",    # e.g., "buy", "BUY", "B"
+            OrderSide.SELL: "<SELL_STRING>",  # e.g., "sell", "SELL", "S"
+        }
     },
     "order_type": {
-        "map": {OrderType.MARKET: "market", OrderType.LIMIT: "limit", OrderType.STOP: "stop"},
+        "map": {
+            OrderType.MARKET: "<MARKET_STRING>",  # e.g., "market", "MARKET", "MKT"
+            OrderType.LIMIT: "<LIMIT_STRING>",    # e.g., "limit", "LIMIT", "LMT"
+            OrderType.STOP: "<STOP_STRING>",      # e.g., "stop", "STOP", "STP"
+        },
         "default_value": OrderType.MARKET,
     },
     "order_validity": {
-        "map": {OrderValidity.DAY: "day", OrderValidity.IOC: "ioc", OrderValidity.GTC: "gtc"},
+        "map": {
+            OrderValidity.DAY: "<DAY_STRING>",  # e.g., "day", "DAY"
+            OrderValidity.IOC: "<IOC_STRING>",  # e.g., "ioc", "IOC"
+            OrderValidity.GTC: "<GTC_STRING>",  # e.g., "gtc", "GTC"
+        },
         "default_value": OrderValidity.DAY,
     },
     "order_status": {
         "map": {
-            OrderStatus.OPEN: ["new", "partially_filled", "pending_new"],
-            OrderStatus.COMPLETE: "filled",
-            OrderStatus.CANCELLED: ["canceled", "expired"],
-            OrderStatus.REJECTED: "rejected",
+            # REPLACE: Map all possible status strings from your broker
+            OrderStatus.OPEN: ["<OPEN_STRING>", "<PARTIAL_STRING>", "<PENDING_STRING>"],
+            OrderStatus.COMPLETE: "<FILLED_STRING>",
+            OrderStatus.CANCELLED: ["<CANCELLED_STRING>", "<EXPIRED_STRING>"],
+            OrderStatus.REJECTED: "<REJECTED_STRING>",
         },
         "default_value": OrderStatus.OPEN,
     },
     "product_type": {
-        "map": {ProductType.DELIVERY: "delivery", ProductType.MARGIN: "margin"},
+        "map": {
+            ProductType.DELIVERY: "<DELIVERY_STRING>",  # e.g., "delivery", "cash", "CNC"
+            ProductType.MARGIN: "<MARGIN_STRING>",      # e.g., "margin", "MIS"
+        },
         "default_value": ProductType.DELIVERY,
     },
     "data_frequencies": {
         "map": {
-            Frequency('1m'): "1Min",
-            Frequency('1d'): "1Day",
+            Frequency('1m'): "<1_MINUTE>",
+            Frequency('1d'): "<1_DAY>",
         }
     },
 }
@@ -149,15 +185,21 @@ BROKER_SPEC = {
 # -------------------------------------------------------------------------
 # API_SPEC
 # -------------------------------------------------------------------------
+# REPLACE: Configure authentication headers for your broker
 COMMON_HEADERS = {
     "fields": {
+        # Common patterns:
+        # - Bearer token: "Authorization": {"source": "f'Bearer {credentials.access_token}'"}
+        # - API key header: "X-API-KEY": {"source": "credentials.api_key"}
+        # - Multiple headers: add multiple entries
         "Authorization": {"source": "f'Bearer {credentials.access_token}'"},
         "Content-Type": {"source": "'application/json'"},
     }
 }
 
 API_SPEC = {
-    "base_url": "https://api.broker.com/v1",
+    # REPLACE: Your broker's base URL
+    "base_url": "https://api.<broker>.com/<VERSION>",
     "headers": COMMON_HEADERS,
     # Global error rules (applied to all endpoints unless overridden)
     "errors": [
@@ -184,8 +226,9 @@ API_SPEC = {
     ],
     "endpoints": {
         # --- Authentication (Optional) ---
+        # REPLACE: Configure if your broker requires session initialization
         "session": {
-            "endpoint": "/auth/token",
+            "endpoint": "/<AUTH_ENDPOINT>",  # e.g., "/auth/token", "/login"
             "method": "POST",
             "request": {
                 "custom": "custom_session_init",  # Complex auth -> use custom
@@ -198,15 +241,17 @@ API_SPEC = {
 
         # --- Account ---
         "get_account": {
-            "endpoint": "/account",
+            # REPLACE: Account endpoint path
+            "endpoint": "/<ACCOUNT_ENDPOINT>",  # e.g., "/account", "/user/account"
             "method": "GET",
             "response": {
                 "payload_type": "object",
                 "result": {
                     "fields": {
-                        "name": {"source": "result.get('account_number', 'default')"},
-                        "cash": {"source": "float(result.get('cash', 0))"},
-                        "currency": {"source": "'USD'"},
+                        # REPLACE: Field names from your broker's response
+                        "name": {"source": "result.get('<ACCOUNT_ID_FIELD>', 'default')"},
+                        "cash": {"source": "float(result.get('<CASH_FIELD>', 0))"},
+                        "currency": {"source": "'<DEFAULT_CURRENCY>'"},  # e.g., 'USD', 'INR', 'EUR'
                     }
                 }
             }
@@ -214,68 +259,74 @@ API_SPEC = {
 
         # --- Orders ---
         "get_orders": {
-            "endpoint": "/orders",
+            # REPLACE: Orders endpoint path
+            "endpoint": "/<ORDERS_ENDPOINT>",  # e.g., "/orders", "/v1/orders"
             "method": "GET",
             "request": {
                 "query": {
                     "fields": {
-                        "status": {"source": "'all'"},
-                        "limit": {"source": "100"},
+                        # REPLACE: Query parameter names
+                        "<STATUS_PARAM>": {"source": "'all'"},
+                        "<LIMIT_PARAM>": {"source": "100"},
                     }
                 },
-                # Pagination: inject token as query param on subsequent pages
+                # REPLACE: Pagination configuration (if supported)
                 "next_page_token": {
-                    "parameter": "after",
+                    "parameter": "<PAGE_TOKEN_PARAM>",  # e.g., "after", "page_token", "cursor"
                     "location": "query"
                 }
             },
             "response": {
                 "payload_type": "array",
-                "payload_path": "response.get('orders', response)",
-                # Pagination: extract next page token from response
-                "next_page_token": "response.get('next_page_token')",
+                # REPLACE: Path to orders array in response (if nested)
+                "payload_path": "response.get('<ORDERS_FIELD>', response)",
+                # REPLACE: Expression to extract next page token
+                "next_page_token": "response.get('<NEXT_PAGE_TOKEN_FIELD>')",
                 "items": {
                     "fields": {
-                        "oid": {"source": "item['id']"},
-                        "broker_order_id": {"source": "item['id']"},
-                        "symbol": {"source": "item['symbol']"},
-                        "quantity": {"source": "float(item['qty'])"},
-                        "filled": {"source": "float(item.get('filled_qty', 0))"},
-                        "price": {"source": "float(item.get('limit_price') or 0)"},
-                        "average_price": {"source": "float(item.get('filled_avg_price') or 0)"},
-                        "side": {"source": "mappings.order_side.to_blueshift(item['side'])"},
-                        "order_type": {"source": "mappings.order_type.to_blueshift(item['type'])"},
-                        "status": {"source": "mappings.order_status.to_blueshift(item['status'])"},
-                        "timestamp": {"source": "pd.Timestamp(item['created_at'])"},
-                        "exchange_timestamp": {"source": "pd.Timestamp(item.get('filled_at') or item['created_at'])"},
+                        # REPLACE: All field names to match your broker's response
+                        "oid": {"source": "item['<ORDER_ID_FIELD>']"},
+                        "broker_order_id": {"source": "item['<ORDER_ID_FIELD>']"},
+                        "symbol": {"source": "item['<SYMBOL_FIELD>']"},
+                        "quantity": {"source": "float(item['<QTY_FIELD>'])"},
+                        "filled": {"source": "float(item.get('<FILLED_QTY_FIELD>', 0))"},
+                        "price": {"source": "float(item.get('<LIMIT_PRICE_FIELD>') or 0)"},
+                        "average_price": {"source": "float(item.get('<AVG_PRICE_FIELD>') or 0)"},
+                        "side": {"source": "mappings.order_side.to_blueshift(item['<SIDE_FIELD>'])"},
+                        "order_type": {"source": "mappings.order_type.to_blueshift(item['<TYPE_FIELD>'])"},
+                        "status": {"source": "mappings.order_status.to_blueshift(item['<STATUS_FIELD>'])"},
+                        "timestamp": {"source": "pd.Timestamp(item['<CREATED_AT_FIELD>'])"},
+                        "exchange_timestamp": {"source": "pd.Timestamp(item.get('<FILLED_AT_FIELD>') or item['<CREATED_AT_FIELD>'])"},
                     }
                 }
             }
         },
 
         "place_order": {
-            "endpoint": "/orders",
+            # REPLACE: Place order endpoint path
+            "endpoint": "/<ORDERS_ENDPOINT>",  # e.g., "/orders"
             "method": "POST",
             "request": {
                 "json": {
                     "fields": {
-                        "symbol": {"source": "order.asset.broker_symbol or order.asset.symbol"},
-                        "qty": {"source": "str(int(order.quantity))"},
-                        "side": {"source": "mappings.order_side.from_blueshift(order.side)"},
-                        "type": {"source": "mappings.order_type.from_blueshift(order.order_type)"},
-                        "time_in_force": {"source": "mappings.order_validity.from_blueshift(order.order_validity)"},
+                        # REPLACE: Request body field names
+                        "<SYMBOL_FIELD>": {"source": "order.asset.broker_symbol or order.asset.symbol"},
+                        "<QTY_FIELD>": {"source": "str(int(order.quantity))"},
+                        "<SIDE_FIELD>": {"source": "mappings.order_side.from_blueshift(order.side)"},
+                        "<TYPE_FIELD>": {"source": "mappings.order_type.from_blueshift(order.order_type)"},
+                        "<VALIDITY_FIELD>": {"source": "mappings.order_validity.from_blueshift(order.order_validity)"},
                         # Conditional: only include limit_price for limit orders
-                        "limit_price": {
+                        "<LIMIT_PRICE_FIELD>": {
                             "source": "str(order.price)",
                             "condition": "order.order_type == OrderType.LIMIT"
                         },
                     }
                 }
             },
-            # Per-endpoint error rules (checked before global)
+            # REPLACE: Per-endpoint error rules (checked before global)
             "errors": [
                 {
-                    "condition": "not success and 'insufficient' in str(response.get('message','')).lower()",
+                    "condition": "not success and '<INSUFFICIENT_FUNDS_KEYWORD>' in str(response.get('message','')).lower()",
                     "exception": "OrderError",
                     "message": "Insufficient funds"
                 }
@@ -284,14 +335,15 @@ API_SPEC = {
                 "payload_type": "object",
                 "result": {
                     "fields": {
-                        "order_id": {"source": "str(result['id'])"}
+                        "order_id": {"source": "str(result['<ORDER_ID_FIELD>'])"}
                     }
                 }
             }
         },
 
         "cancel_order": {
-            "endpoint": "/orders/{order_id}",
+            # REPLACE: Cancel order endpoint path
+            "endpoint": "/<ORDERS_ENDPOINT>/{order_id}",
             "method": "DELETE",
             "request": {
                 "path": {
@@ -304,15 +356,16 @@ API_SPEC = {
                 "payload_type": "object",
                 "result": {
                     "fields": {
-                        "order_id": {"source": "str(result.get('id', order.oid))"}
+                        "order_id": {"source": "str(result.get('<ORDER_ID_FIELD>', order.oid))"}
                     }
                 }
             }
         },
 
         "update_order": {
-            "endpoint": "/orders/{order_id}",
-            "method": "PATCH",
+            # REPLACE: Update order endpoint path
+            "endpoint": "/<ORDERS_ENDPOINT>/{order_id}",
+            "method": "PATCH",  # or "PUT" depending on broker
             "request": {
                 "path": {
                     "fields": {
@@ -321,8 +374,8 @@ API_SPEC = {
                 },
                 "json": {
                     "fields": {
-                        "qty": {"source": "str(int(quantity))", "condition": "quantity is not None"},
-                        "limit_price": {"source": "str(price)", "condition": "price is not None"},
+                        "<QTY_FIELD>": {"source": "str(int(quantity))", "condition": "quantity is not None"},
+                        "<LIMIT_PRICE_FIELD>": {"source": "str(price)", "condition": "price is not None"},
                     }
                 }
             },
@@ -330,7 +383,7 @@ API_SPEC = {
                 "payload_type": "object",
                 "result": {
                     "fields": {
-                        "order_id": {"source": "str(result['id'])"}
+                        "order_id": {"source": "str(result['<ORDER_ID_FIELD>'])"}
                     }
                 }
             }
@@ -338,17 +391,20 @@ API_SPEC = {
 
         # --- Positions ---
         "get_positions": {
-            "endpoint": "/positions",
+            # REPLACE: Positions endpoint path
+            "endpoint": "/<POSITIONS_ENDPOINT>",  # e.g., "/positions", "/portfolio/positions"
             "method": "GET",
             "response": {
                 "payload_type": "array",
-                "payload_path": "response.get('positions', response) if isinstance(response, list) else response.get('positions', [])",
+                # REPLACE: Path to positions array in response (if nested)
+                "payload_path": "response.get('<POSITIONS_FIELD>', response) if isinstance(response, list) else response.get('<POSITIONS_FIELD>', [])",
                 "items": {
                     "fields": {
-                        "symbol": {"source": "item['symbol']"},
-                        "quantity": {"source": "float(item['qty'])"},
-                        "average_price": {"source": "float(item['avg_entry_price'])"},
-                        "last_price": {"source": "float(item['current_price'])"},
+                        # REPLACE: Field names from your broker's response
+                        "symbol": {"source": "item['<SYMBOL_FIELD>']"},
+                        "quantity": {"source": "float(item['<QTY_FIELD>'])"},
+                        "average_price": {"source": "float(item['<AVG_ENTRY_PRICE_FIELD>'])"},
+                        "last_price": {"source": "float(item['<CURRENT_PRICE_FIELD>'])"},
                         "product_type": {"source": "ProductType.DELIVERY"},
                     }
                 }
@@ -357,7 +413,8 @@ API_SPEC = {
 
         # --- Market Data ---
         "get_history": {
-            "endpoint": "/bars/{symbol}",
+            # REPLACE: Historical data endpoint (may be different base URL)
+            "endpoint": "/<BARS_ENDPOINT>/{symbol}",  # e.g., "/bars/{symbol}", "/history/{symbol}"
             "method": "GET",
             "request": {
                 "path": {
@@ -367,27 +424,38 @@ API_SPEC = {
                 },
                 "query": {
                     "fields": {
-                        "timeframe": {"source": "my_broker_timeframe(freq)"},
-                        "start": {"source": "from_dt.isoformat()"},
-                        "end": {"source": "to_dt.isoformat()"},
-                        "limit": {"source": "nbars"},
+                        # REPLACE: Query parameter names
+                        "<TIMEFRAME_PARAM>": {"source": "broker_timeframe(freq)"},
+                        "<START_PARAM>": {"source": "from_dt.isoformat()"},
+                        "<END_PARAM>": {"source": "to_dt.isoformat()"},
+                        "<LIMIT_PARAM>": {"source": "nbars"},
                     }
                 }
             },
             "response": {
                 "payload_type": "data",
-                "payload_path": "response.get('bars', [])",
+                # REPLACE: Path to bars array in response
+                "payload_path": "response.get('<BARS_FIELD>', [])",
                 "data": {
                     "frame": "records",
-                    "timestamp": {"field": "t", "format": "%Y-%m-%dT%H:%M:%SZ"},
-                    # rename: {Target_Standard: Source_API}
-                    "rename": {"open": "o", "high": "h", "low": "l", "close": "c", "volume": "v"}
+                    # REPLACE: Timestamp field name and format
+                    "timestamp": {"field": "<TIMESTAMP_FIELD>", "format": "%Y-%m-%dT%H:%M:%SZ"},
+                    # REPLACE: Map standard OHLCV names to broker's field names
+                    # Keys = standard names, Values = broker's field names
+                    "rename": {
+                        "open": "<OPEN_FIELD>",
+                        "high": "<HIGH_FIELD>",
+                        "low": "<LOW_FIELD>",
+                        "close": "<CLOSE_FIELD>",
+                        "volume": "<VOLUME_FIELD>"
+                    }
                 }
             }
         },
 
         "get_quote": {
-            "endpoint": "/quotes/{symbol}",
+            # REPLACE: Quote endpoint path
+            "endpoint": "/<QUOTES_ENDPOINT>/{symbol}",  # e.g., "/quotes/{symbol}"
             "method": "GET",
             "request": {
                 "path": {
@@ -398,13 +466,15 @@ API_SPEC = {
             },
             "response": {
                 "payload_type": "quote",
-                "payload_path": "response.get('quote', response)",
+                # REPLACE: Path to quote data in response
+                "payload_path": "response.get('<QUOTE_FIELD>', response)",
                 "quote": {
-                    "last": {"source": "float(quote.get('last_price', 0))"},
-                    "bid": {"source": "float(quote.get('bid', 0))"},
-                    "bid_volume": {"source": "float(quote.get('bid_size', 0))"},
-                    "ask": {"source": "float(quote.get('ask', 0))"},
-                    "ask_volume": {"source": "float(quote.get('ask_size', 0))"},
+                    # REPLACE: Field names from your broker's quote response
+                    "last": {"source": "float(quote.get('<LAST_FIELD>', 0))"},
+                    "bid": {"source": "float(quote.get('<BID_FIELD>', 0))"},
+                    "bid_volume": {"source": "float(quote.get('<BID_SIZE_FIELD>', 0))"},
+                    "ask": {"source": "float(quote.get('<ASK_FIELD>', 0))"},
+                    "ask_volume": {"source": "float(quote.get('<ASK_SIZE_FIELD>', 0))"},
                 }
             }
         },
@@ -417,34 +487,36 @@ API_SPEC = {
 STREAMING_SPEC = {
     "connections": {
         "market_data": {
-            "url": "wss://stream.broker.com/v1/stream",
-            "backend": {"type": "websocket", "options": {}},
+            # REPLACE: WebSocket URL for streaming data
+            "url": "wss://stream.<broker>.com/<VERSION>/stream",
+            "backend": {"type": "websocket", "options": {}},  # Options: "websocket", "socketio", "mqtt"
             "streams": ["data", "quote"],
 
-            # Authentication
+            # REPLACE: Authentication method and message format
             "auth": {
-                "mode": "first_message",
+                "mode": "first_message",  # Options: "first_message", "headers", "url", "none"
                 "first_message": {
                     "format": "json",
                     "json": {
                         "fields": {
-                            "action": {"source": "'auth'"},
-                            "key": {"source": "credentials.api_key"},
-                            "secret": {"source": "credentials.api_secret"},
+                            # REPLACE: Auth message fields
+                            "<ACTION_FIELD>": {"source": "'auth'"},
+                            "<KEY_FIELD>": {"source": "credentials.api_key"},
+                            "<SECRET_FIELD>": {"source": "credentials.api_secret"},
                         }
                     }
                 }
             },
 
-            # Subscribe/Unsubscribe (per-channel)
+            # REPLACE: Subscribe/Unsubscribe message format (per-channel)
             "subscribe": {
                 "subscribe": {
                     "data": {
                         "format": "json",
                         "json": {
                             "fields": {
-                                "action": {"source": "'subscribe'"},
-                                "trades": {"source": "[a.broker_symbol or a.symbol for a in subscribe_assets]"},
+                                "<ACTION_FIELD>": {"source": "'subscribe'"},
+                                "<SYMBOLS_FIELD>": {"source": "[a.broker_symbol or a.symbol for a in subscribe_assets]"},
                             }
                         }
                     },
@@ -452,8 +524,8 @@ STREAMING_SPEC = {
                         "format": "json",
                         "json": {
                             "fields": {
-                                "action": {"source": "'subscribe'"},
-                                "quotes": {"source": "[a.broker_symbol or a.symbol for a in subscribe_assets]"},
+                                "<ACTION_FIELD>": {"source": "'subscribe'"},
+                                "<SYMBOLS_FIELD>": {"source": "[a.broker_symbol or a.symbol for a in subscribe_assets]"},
                             }
                         }
                     }
@@ -463,8 +535,8 @@ STREAMING_SPEC = {
                         "format": "json",
                         "json": {
                             "fields": {
-                                "action": {"source": "'unsubscribe'"},
-                                "trades": {"source": "[a.broker_symbol or a.symbol for a in subscribe_assets]"},
+                                "<ACTION_FIELD>": {"source": "'unsubscribe'"},
+                                "<SYMBOLS_FIELD>": {"source": "[a.broker_symbol or a.symbol for a in subscribe_assets]"},
                             }
                         }
                     }
@@ -474,29 +546,32 @@ STREAMING_SPEC = {
             # Message Parsing
             "parser": {
                 "format": "json",
-                "payload_path": "data.get('data', data)",  # Extract inner payload if wrapped
+                # REPLACE: If messages are wrapped, extract the inner payload
+                "payload_path": "data.get('<PAYLOAD_FIELD>', data)",
             },
 
-            # Message Routing (required for multi-stream connections)
+            # REPLACE: Router rules to distinguish message types
             "router": {
                 "enabled": True,
                 "rules": [
-                    {"channel": "data", "match": "data.get('type') == 'trade'"},
-                    {"channel": "quote", "match": "data.get('type') == 'quote'"},
+                    # REPLACE: Conditions to identify message types
+                    {"channel": "data", "match": "data.get('<TYPE_FIELD>') == '<TRADE_TYPE>'"},
+                    {"channel": "quote", "match": "data.get('<TYPE_FIELD>') == '<QUOTE_TYPE>'"},
                 ],
                 "default_channel": "data"
             },
 
-            # Converters: Raw message -> Blueshift objects
+            # REPLACE: Convert raw messages to Blueshift objects
             "converters": {
                 "data": [
                     {
                         "fields": {
-                            "asset": {"source": "broker.infer_asset(symbol=data['symbol'])"},
-                            "timestamp": {"source": "pd.Timestamp(data['timestamp'])"},
+                            # REPLACE: Field names from streaming messages
+                            "asset": {"source": "broker.infer_asset(symbol=data['<SYMBOL_FIELD>'])"},
+                            "timestamp": {"source": "pd.Timestamp(data['<TIMESTAMP_FIELD>'])"},
                             "data": {
-                                "close": {"source": "float(data['price'])"},
-                                "volume": {"source": "float(data.get('size', 0))"},
+                                "close": {"source": "float(data['<PRICE_FIELD>'])"},
+                                "volume": {"source": "float(data.get('<SIZE_FIELD>', 0))"},
                             }
                         }
                     }
@@ -504,11 +579,11 @@ STREAMING_SPEC = {
                 "quote": [
                     {
                         "fields": {
-                            "asset": {"source": "broker.infer_asset(symbol=data['symbol'])"},
-                            "timestamp": {"source": "pd.Timestamp(data['timestamp'])"},
-                            "last": {"source": "float(data.get('last', 0))"},
-                            "bid": {"source": "float(data.get('bid', 0))"},
-                            "ask": {"source": "float(data.get('ask', 0))"},
+                            "asset": {"source": "broker.infer_asset(symbol=data['<SYMBOL_FIELD>'])"},
+                            "timestamp": {"source": "pd.Timestamp(data['<TIMESTAMP_FIELD>'])"},
+                            "last": {"source": "float(data.get('<LAST_FIELD>', 0))"},
+                            "bid": {"source": "float(data.get('<BID_FIELD>', 0))"},
+                            "ask": {"source": "float(data.get('<ASK_FIELD>', 0))"},
                         }
                     }
                 ]
@@ -524,52 +599,59 @@ OBJECTS_SPEC = {
     "order": [
         {
             "fields": {
-                "oid": {"source": "str(data['id'])"},
-                "broker_order_id": {"source": "str(data['id'])"},
-                "quantity": {"source": "float(data['qty'])"},
-                "filled": {"source": "float(data.get('filled_qty', 0))"},
-                "price": {"source": "float(data.get('limit_price') or 0)"},
-                "average_price": {"source": "float(data.get('filled_avg_price') or 0)"},
-                "side": {"source": "mappings.order_side.to_blueshift(data['side'])"},
-                "order_type": {"source": "mappings.order_type.to_blueshift(data['type'])"},
-                "status": {"source": "mappings.order_status.to_blueshift(data['status'])"},
-                "timestamp": {"source": "pd.Timestamp(data['created_at'])"},
+                # REPLACE: Field names to match your broker's order object
+                "oid": {"source": "str(data['<ORDER_ID_FIELD>'])"},
+                "broker_order_id": {"source": "str(data['<ORDER_ID_FIELD>'])"},
+                "quantity": {"source": "float(data['<QTY_FIELD>'])"},
+                "filled": {"source": "float(data.get('<FILLED_QTY_FIELD>', 0))"},
+                "price": {"source": "float(data.get('<LIMIT_PRICE_FIELD>') or 0)"},
+                "average_price": {"source": "float(data.get('<AVG_PRICE_FIELD>') or 0)"},
+                "side": {"source": "mappings.order_side.to_blueshift(data['<SIDE_FIELD>'])"},
+                "order_type": {"source": "mappings.order_type.to_blueshift(data['<TYPE_FIELD>'])"},
+                "status": {"source": "mappings.order_status.to_blueshift(data['<STATUS_FIELD>'])"},
+                "timestamp": {"source": "pd.Timestamp(data['<CREATED_AT_FIELD>'])"},
             }
         }
     ],
     "position": [
         {
             "fields": {
-                "quantity": {"source": "float(data['qty'])"},
-                "average_price": {"source": "float(data['avg_entry_price'])"},
-                "last_price": {"source": "float(data['current_price'])"},
+                # REPLACE: Field names to match your broker's position object
+                "quantity": {"source": "float(data['<QTY_FIELD>'])"},
+                "average_price": {"source": "float(data['<AVG_ENTRY_PRICE_FIELD>'])"},
+                "last_price": {"source": "float(data['<CURRENT_PRICE_FIELD>'])"},
             }
         }
     ],
 }
 
 # -------------------------------------------------------------------------
-# MASTER_DATA_SPEC (Optional but recommended)
+# MASTER_DATA_SPEC (Optional but recommended for production)
 # -------------------------------------------------------------------------
+# Master data provides the asset universe for symbol/id lookup and streaming routing.
+# Configure this to fetch tradeable instruments from your broker.
 MASTER_DATA_SPEC = [
-    # Example: Fetch instrument list from broker API
+    # REPLACE: Uncomment and configure for your broker
     # {
     #     "endpoint": {
-    #         "endpoint": "/assets",
+    #         "endpoint": "/<ASSETS_ENDPOINT>",  # e.g., "/assets", "/instruments"
     #         "method": "GET",
     #         "response": {"payload_type": "array", "items": {"fields": {}}}
     #     },
-    #     "mode": "api",     # "api" or "file"
+    #     "mode": "api",     # "api" for REST endpoint, "file" for CSV/JSON file download
     #     "format": "json",  # "json" or "csv"
     #     "assets": [
     #         {
     #             "asset_class": "equity",
-    #             "filter": "item.get('status') == 'active' and item.get('tradable')",
+    #             # REPLACE: Filter expression for tradeable assets
+    #             "filter": "item.get('<STATUS_FIELD>') == 'active' and item.get('<TRADABLE_FIELD>')",
     #             "mapping": {
-    #                 "symbol": {"source": "item['symbol']"},
-    #                 "security_id": {"source": "item.get('id', item['symbol'])"},
-    #                 "name": {"source": "item.get('name', item['symbol'])"},
-    #                 "exchange_name": {"source": "item.get('exchange', 'NYSE')"},
+    #                 # REPLACE: Field names from your broker's instrument data
+    #                 "symbol": {"source": "item['<SYMBOL_FIELD>']"},
+    #                 "security_id": {"source": "item.get('<ID_FIELD>', item['<SYMBOL_FIELD>'])"},
+    #                 "name": {"source": "item.get('<NAME_FIELD>', item['<SYMBOL_FIELD>'])"},
+    #                 "exchange_name": {"source": "item.get('<EXCHANGE_FIELD>', '<DEFAULT_EXCHANGE>')"},
+    #                 "calendar_name": {"source": "'<CALENDAR_NAME>'"},
     #             }
     #         }
     #     ]
@@ -579,13 +661,23 @@ MASTER_DATA_SPEC = [
 # -------------------------------------------------------------------------
 # Registration Logic
 # -------------------------------------------------------------------------
+# REPLACE: Define variants for your broker (live, paper, sandbox, etc.)
 BROKER_VARIANTS = {
     'live': {
-        "broker": {"name": "mybroker-live", "variant": "live", "display_name": "My Broker Live"},
+        "broker": {
+            "name": "<broker_name>-live",
+            "variant": "live",
+            "display_name": "<Broker Name> Live"
+        },
+        "api": {"base_url": "https://api.<broker>.com/<VERSION>"}
     },
     'paper': {
-        "broker": {"name": "mybroker-paper", "variant": "paper", "display_name": "My Broker Paper"},
-        "api": {"base_url": "https://paper-api.broker.com/v1"}
+        "broker": {
+            "name": "<broker_name>-paper",
+            "variant": "paper",
+            "display_name": "<Broker Name> Paper"
+        },
+        "api": {"base_url": "https://sandbox.<broker>.com/<VERSION>"}
     }
 }
 

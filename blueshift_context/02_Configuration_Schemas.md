@@ -28,29 +28,31 @@ Notes:
 Defines global options and enum mappings.
 
 ```python
+# Example BROKER_SPEC - replace placeholder values with your broker's specifics
 BROKER_SPEC = {
-    "name": "mybroker",          # Required: broker identifier
+    "name": "<broker_name>",     # Required: broker identifier (lowercase, alphanumeric + hyphens)
     "variant": "live",           # Optional: variant name (e.g., "live", "paper")
-    "calendar": "NYSE",          # Trading calendar (NYSE, NSE, etc.)
+    "calendar": "<CALENDAR>",    # Trading calendar (e.g., "NYSE", "NSE", "LSE")
     "credentials": {
         "fields": ["api_key", "secret"], # Required fields in blueshift.yaml
         "validator": "credentials.api_key and credentials.secret"
     },
     "options": {
         "timeout": 10,           # HTTP timeout
-        "rate_limit": 180,       # Requests per period
+        "rate_limit": 180,       # Requests per period (check broker docs)
         "rate_limit_period": 60, # Period in seconds
         "max_tickers": 200,      # Max tickers in one request
-        "supported_modes": ["LIVE", "PAPER"],
+        "supported_modes": ["LIVE", "PAPER"],  # Remove "PAPER" if not supported
         "fractional_trading": False
     },
     "assets": ["equity"],        # Supported asset classes
-    
+
     # Mappings: Map Blueshift Enums to Broker Strings
+    # Replace string values with your broker's API values
     "order_side": {
         "map": {
-            OrderSide.BUY: "buy",
-            OrderSide.SELL: "sell"
+            OrderSide.BUY: "<BUY_STRING>",    # e.g., "buy", "BUY", "B"
+            OrderSide.SELL: "<SELL_STRING>",  # e.g., "sell", "SELL", "S"
         }
     },
     "order_type": { ... },
@@ -63,10 +65,12 @@ BROKER_SPEC = {
 Defines the REST endpoints.
 
 ```python
+# Example API_SPEC - replace placeholder values with your broker's specifics
 API_SPEC = {
-    "base_url": "https://api.broker.com",
+    "base_url": "https://api.<broker>.com",  # Replace with your broker's base URL
     "headers": {
         "fields": {
+            # Replace with your broker's authentication header(s)
             "Authorization": {"source": "f'Bearer {credentials.api_key}'"}
         }
     },
@@ -308,7 +312,7 @@ OBJECTS_SPEC = {
                 "asset_type": {"source": "'equity'"},
                 "symbol": {"source": "data['symbol']"},
                 "security_id": {"source": "data.get('token')"},
-                "exchange_name": {"source": "data.get('exchange', 'NSE')"},
+                "exchange_name": {"source": "data.get('exchange', '<DEFAULT_EXCHANGE>')"},  # e.g., 'NYSE', 'NSE'
             }
         }
     ]
