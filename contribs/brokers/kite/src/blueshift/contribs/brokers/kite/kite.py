@@ -848,25 +848,7 @@ STREAMING_SPEC = {
                     {
                         # "condition": "len(data) >0",
                         "custom": "kite_data_converter"
-                        # "fields": {
-                        #     "asset": {
-                        #         "source": "broker.asset_finder.sid(str(data['instrument_token']))"
-                        #     },
-                    #         "timestamp": {"source": "pd.Timestamp.now(tz=broker.tz)"},
-                    #         "data": {
-                    #             "close": {"source": "float(data.get('close', 0))"},
-                    #             "open": {"source": "float(data.get('open', 0))"},
-                    #             "high": {"source": "float(data.get('high', 0))"},
-                    #             "low": {"source": "float(data.get('low', 0))"},
-                    #             "volume": {"source": "float(data.get('volume', 0))"},
-                    #             "last": {"source": "float(data.get('last_price', 0))"},
-                    #             # Quote fields
-                    #             # "bid": {"source": "float(data.get('BidRate', 0))"},
-                    #             # "bid_volume": {"source": "float(data.get('BidQty', 0))"},
-                    #             # "ask": {"source": "float(data.get('OffRate', 0))"},
-                    #             # "ask_volume": {"source": "float(data.get('OffQty', 0))"},
-                    #         }
-                    #     }
+
                     }
                 ],
                 "order": [
