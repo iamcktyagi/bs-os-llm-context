@@ -12,11 +12,15 @@ Based on Kite Connect v3 API documentation:
 https://kite.trade/docs/connect/v3/
 """
 from __future__ import annotations
+
+import traceback
+
 import pandas as pd
 import hashlib
 import struct
 import json
 
+from blueshift.assets import Asset
 from blueshift.interfaces.assets._assets import InstrumentType, OptionType
 from blueshift.lib.common.constants import Frequency
 from blueshift.lib.common.functions import merge_json_recursive, to_title_case
@@ -28,6 +32,7 @@ from blueshift.brokers.core.config.config import APIBrokerConfig
 from blueshift.brokers.core.broker import RestAPIBroker
 from blueshift.brokers.core.config.resolver import ConfigRegistry
 from blueshift.brokers.factory import broker_class_factory
+import struct
 
 
 # -------------------------------------------------------------------------
@@ -35,6 +40,13 @@ from blueshift.brokers.factory import broker_class_factory
 # -------------------------------------------------------------------------
 registry = ConfigRegistry(globals())
 cal = get_calendar('NSE')
+
+_FULL_HEAD_STRUCT = struct.Struct(">16i")
+_DEPTH_ENTRY_STRUCT = struct.Struct(">iih2x")  # qty, price, orders, padding
+_DEPTH_ENTRIES = 10
+_DEPTH_START = 64
+_DEPTH_END = 184
+_INT16 = struct.Struct(">h")  # big-endian short
 
 @registry.register()
 def kite_checksum(api_key, request_token, api_secret, **kwargs) -> str:
@@ -146,15 +158,8 @@ def kite_order_converter(data, data_type=None ,*args, **kwargs) -> dict:
       'product': 'CNC', 'quantity': 1, 'disclosed_quantity': 0, 'price': 128.1, 'trigger_price': 0, 'average_price': 0,
        'filled_quantity': 0, 'pending_quantity': 1, 'cancelled_quantity': 0, 'market_protection': 0, 'meta': {},
     'tag': None, 'guid': '19Xpbjggknpgbqa'}}
-
-     "order_type": {"source": "mappings.order_type.to_blueshift(data['data']['order']['type'])"},
-     "order_validity": {"source": "mappings.order_validity.to_blueshift(data['data']['order']['time_in_force'])"},
-     "price": {"source": "float(data['data']['order']['limit_price']) if data['data']['order']['limit_price'] else 0"},
-     "status": {"source": "mappings.order_status.to_blueshift(data['data']['order']['status'])"},
-     "timestamp": {"source": "pd.Timestamp(data['data']['timestamp']).tz_convert(broker.tz)"},
-
     """
-    print(args, kwargs)
+    # print(data, args, kwargs)
     mappings = kwargs.get('mappings')
     order = {
         "order_id": data['data']['order_id'],
@@ -176,10 +181,83 @@ def kite_order_converter(data, data_type=None ,*args, **kwargs) -> dict:
 
 
 @registry.register()
-def kite_data_converter(data, data_type=None ,*args, **kwargs) -> list[dict]:
-    print(f"====================data: {data}")
+def kite_data_converter(data,*args, **kwargs) -> tuple:
+    broker = kwargs.get('broker')
+    asset = broker.sid((data['security_id']))
+    ts = pd.Timestamp(data['timestamp'])
+    returning = (asset, ts, data)
+    return returning
+
+@registry.register()
+def kite_quote_converter(data ,*args, **kwargs) -> list[dict]:
     return data
 
+@registry.register()
+def kite_product_type(asset: Asset, product_type, **kwargs) -> str:
+    if asset.is_opt() or asset.is_futures():
+        if product_type == ProductType.DELIVERY:
+            return "NRML"
+        return "MIS"
+    if product_type == ProductType.DELIVERY:
+        return "CNC"
+    elif product_type in [ProductType.INTRADAY, ProductType.MARGIN]:
+        return "MIS"
+    return "CNC"
+
+
+def to_dict(**kwargs):
+    return kwargs
+
+def parse_market_depth(buf: bytes):
+    bids = []
+    asks = []
+    offset = _DEPTH_START
+    for i in range(_DEPTH_ENTRIES):
+        qty, price, orders = _DEPTH_ENTRY_STRUCT.unpack_from(buf, offset)
+        # print(f"qty: {qty}, price: {price/100}")
+        entry = (qty, price/100)
+        if i < 5:
+            bids.append(entry)
+        else:
+            asks.append(entry)
+
+        offset += 12
+
+    return to_dict(bids=bids, asks = asks)
+
+
+def parse_full(buf: bytes, tz_info = None):
+    h = _FULL_HEAD_STRUCT.unpack_from(buf, 0)
+    security_id = h[0]
+    ltp = h[1]/100
+    ts = pd.Timestamp(h[11], unit='s')
+    if tz_info:
+        ts = ts.tz_localize(tz_info)
+    # for attr in ('last', 'close', 'open', 'high', 'low', 'upper_circuit', 'lower_circuit'):
+    quote = to_dict(security_id=security_id , type = "quote" ,
+                    last = ltp, timestamp = ts,
+                    market_depth=parse_market_depth(buf))
+    data = to_dict(
+        security_id=h[0],
+        price=ltp,
+        volume=h[2]/100,
+        # average_traded_price=h[3]/100,
+        # total_volume=h[4],
+        # total_buy_quantity=h[5],
+        # total_sell_quantity=h[6],
+        # open=h[7]/100,
+        # high=h[8]/100,
+        # low=h[9]/100,
+        # close=h[10]/100,
+        timestamp=ts,
+        # open_interest=h[12],
+        # oi_day_high=h[13],
+        # oi_day_low=h[14],
+        # exchange_timestamp=h[15],
+        # market_depth=parse_market_depth(buf),
+        type = 'data'
+    )
+    return [data , quote]
 
 
 @registry.register()
@@ -201,89 +279,38 @@ def kite_parse_binary(data, *args, **kwargs) -> list[dict]:
     Returns list of dicts with parsed tick data.
     """
     # print(f"Recived to parse : {type(data)} |data={data}")
-
-    try:
-        if isinstance(data, str):
-            data = json.loads(data)
-            if data.get("type", "") == "order":
-                return data
-            return []
-
-        if not isinstance(data, (bytes, bytearray)):
-            # print(f"Recived data is not bytes: {type(data)} |\ndata={data}")
-            return []
-
-        data = bytes(data)
-        if len(data) < 2:
-            return []
-
-        # Read number of packets
-        num_packets = struct.unpack('>H', data[0:2])[0]
-        packets = []
-        offset = 2
-
-        for _ in range(num_packets):
-            if offset + 2 > len(data):
-                break
-
-            # Read packet length
-            packet_len = struct.unpack('>H', data[offset:offset+2])[0]
-            offset += 2
-
-            if offset + packet_len > len(data):
-                break
-
-            packet_data = data[offset:offset+packet_len]
-            offset += packet_len
-
-            # Parse packet based on length
-            if packet_len >= 8:  # Minimum for LTP mode
-                token = struct.unpack('>I', packet_data[0:4])[0]
-                last_price = struct.unpack('>I', packet_data[4:8])[0] / 100.0
-
-                tick = {
-                    'instrument_token': token,
-                    'last_price': last_price,
-                    'tradable': True,
-                }
-
-                # Quote mode (44 bytes) or Full mode (184 bytes)
-                if packet_len >= 44:
-                    tick['last_quantity'] = struct.unpack('>I', packet_data[8:12])[0]
-                    tick['average_price'] = struct.unpack('>I', packet_data[12:16])[0] / 100.0
-                    tick['volume'] = struct.unpack('>I', packet_data[16:20])[0]
-                    tick['buy_quantity'] = struct.unpack('>I', packet_data[20:24])[0]
-                    tick['sell_quantity'] = struct.unpack('>I', packet_data[24:28])[0]
-                    tick['open'] = struct.unpack('>I', packet_data[28:32])[0] / 100.0
-                    tick['high'] = struct.unpack('>I', packet_data[32:36])[0] / 100.0
-                    tick['low'] = struct.unpack('>I', packet_data[36:40])[0] / 100.0
-                    tick['close'] = struct.unpack('>I', packet_data[40:44])[0] / 100.0
-
-                # Full mode with market depth (184 bytes)
-                if packet_len >= 184:
-                    # Parse market depth (bytes 64-184)
-                    # For now, we'll skip detailed market depth parsing
-                    # and just note it's available
-                    tick['mode'] = 'full'
-                elif packet_len >= 44:
-                    tick['mode'] = 'quote'
-                else:
-                    tick['mode'] = 'ltp'
-                tick['type'] = 'data'
-                packets.append(tick)
-
-                import datetime
-                timestamp = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
-        print(f"Returning data: {packets}")
-        return packets
-    except Exception as e:
-        # import traceback
-        # traceback.print_exc()
+    broker_tz = kwargs.get('broker').tz
+    if isinstance(data, str):
+        data = json.loads(data)
+        if data.get("type", "") == "order":
+            return data
         return []
 
-@registry.register()
-def kite_quote_transformer(data,type_, **kwargs):
-    return data
+    if not isinstance(data, (bytes, bytearray)):
+        # print(f"Recived data is not bytes: {type(data)} |\ndata={data}")
+        return []
+
+    data = bytes(data)
+    if len(data) < 2:
+        return []
+
+    packets = []
+    offset = 0
+    packet_count = _INT16.unpack_from(data, offset)[0]
+    offset += 2
+    for _ in range(packet_count):
+        pkt_len = _INT16.unpack_from(data, offset)[0]
+        if pkt_len == 184:
+            offset += 2
+            pkt = data[offset: offset + pkt_len]
+            packets.extend(parse_full(pkt, broker_tz))
+            offset += pkt_len
+        else:
+            print(f"Packet length {pkt_len} not supported yet.")
+    return packets
+
+
+
 
 # -------------------------------------------------------------------------
 # BROKER_SPEC - Broker Configuration and Enum Mappings
@@ -338,7 +365,7 @@ BROKER_SPEC = {
     },
     "order_status": {
         "map": {
-            OrderStatus.OPEN: ["OPEN", "TRIGGER PENDING", "MODIFY PENDING", "CANCEL PENDING"],
+            OrderStatus.OPEN: ["OPEN", "TRIGGER PENDING", "MODIFY PENDING", "CANCEL PENDING", "UPDATE"],
             OrderStatus.COMPLETE: "COMPLETE",
             OrderStatus.CANCELLED: "CANCELLED",
             OrderStatus.REJECTED: "REJECTED",
@@ -347,8 +374,9 @@ BROKER_SPEC = {
     },
     "product_type": {
         "map": {
-            ProductType.DELIVERY: ["CNC","NRML"],
-            ProductType.INTRADAY: "MIS",  # Margin Intraday Squareoff
+            ProductType.DELIVERY: "NRML",
+            ProductType.INTRADAY: "MIS",
+            ProductType.MARGIN: "MIS",  # Margin Intraday Squareoff
         },
         "default_value": ProductType.DELIVERY,
     },
@@ -397,17 +425,17 @@ TRADING_ENDPOINTS = {
                 "exchange_order_id": {"source": "item.get('exchange_order_id', '')"},
                 "symbol": {"source": "item.get('tradingsymbol', '')"},
                 "security_id": {"source": "str(item.get('instrument_token', ''))"},
-                "quantity": {"source": "float(item.get('quantity', 0))"},
+                "quantity": {"source": "float(item.get('quantity'))"},
                 "filled": {"source": "float(item.get('filled_quantity', 0))"},
                 "pending": {"source": "float(item.get('pending_quantity', 0))"},
                 "average_price": {"source": "float(item.get('average_price', 0))"},
                 "price": {"source": "float(item.get('price', 0))"},
                 "trigger_price": {"source": "float(item.get('trigger_price', 0))"},
-                "side": {"source": "mappings.order_side.to_blueshift(item.get('transaction_type', 'BUY'))"},
-                "order_type": {"source": "mappings.order_type.to_blueshift(item.get('order_type', 'MARKET'))"},
-                "product_type": {"source": "mappings.product_type.to_blueshift(item.get('product', 'CNC'))"},
-                "order_validity": {"source": "mappings.order_validity.to_blueshift(item.get('validity', 'DAY'))"},
-                "status": {"source": "mappings.order_status.to_blueshift(item.get('status', 'OPEN'))"},
+                "side": {"source": "mappings.order_side.to_blueshift(item.get('transaction_type'))"},
+                "order_type": {"source": "mappings.order_type.to_blueshift(item.get('order_type'))"},
+                "product_type": {"source": "mappings.product_type.to_blueshift(item.get('product'))"},
+                "order_validity": {"source": "mappings.order_validity.to_blueshift(item.get('validity'))"},
+                "status": {"source": "mappings.order_status.to_blueshift(item.get('status'))"},
                 "timestamp": {"source": "pd.Timestamp(item.get('order_timestamp', '')).tz_localize('Asia/Kolkata').tz_convert(broker.tz) if item.get('order_timestamp') else pd.Timestamp.now(tz=broker.tz)"},
                 "exchange_timestamp": {"source": "pd.Timestamp(item.get('exchange_timestamp', item.get('order_timestamp', ''))).tz_localize('Asia/Kolkata').tz_convert(broker.tz) if item.get('exchange_timestamp') or item.get('order_timestamp') else pd.Timestamp.now(tz=broker.tz)"},
                 "remark": {"source": "item.get('tag', '')"},
@@ -458,12 +486,13 @@ TRADING_ENDPOINTS = {
             },
             "body": {
                 "fields": {
-                    "tradingsymbol": {"source": "order.asset.symbol"},
+                    "tradingsymbol": {"source": "order.asset.broker_symbol"},
                     "exchange": {"source": "order.asset.exchange_name"},
                     "transaction_type": {"source": "mappings.order_side.from_blueshift(order.side)"},
                     "order_type": {"source": "mappings.order_type.from_blueshift(order.order_type)"},
                     "quantity": {"source": "int(order.quantity)"},
-                    "product": {"source": "mappings.product_type.from_blueshift(order.product_type)"},
+                    # "product": {"source": "mappings.product_type.from_blueshift(order.product_type)"},
+                    "product": {"source": "kite_product_type(order.asset, order.product_type)"},
                     "validity": {"source": "mappings.order_validity.from_blueshift(order.order_validity)"},
                     "price": {
                         "source": "float(order.price)",
@@ -482,14 +511,30 @@ TRADING_ENDPOINTS = {
         "response": {
             "payload_type": "object",
             "result": {"fields":{
-                "order_id": {"source": "result.get('data', {}).get('order_id', '')"},
+                "order_id": {"source": "result.get('data', {}).get('order_id', None)"},
             },}
         },
+        "errors":[
+                {
+                    "condition": "isinstance(response, dict) and response.get('status') =='error' and isinstance(response['message'], str) "
+                                 "and ('lower circuit limit' in response['message'].lower() or 'upper circuit limit' in response['message'].lower() )",
+                    "exception": "PriceOutOfRange",
+                    "message": "response",
+                },
+            ],
     },
 
     "cancel_order": {
         "endpoint": "/orders/{variety}/{order_id}",
         "method": "DELETE",
+        "errors":[
+                {
+                    "condition": "isinstance(response, dict) and response.get('status') =='error' and isinstance(response['message'], str) "
+                                 "and 'invalid `order_id`' in response['message'].lower()",
+                    "exception": "OrderNotFound",
+                    "message": "response",
+                },
+            ],
         "request": {
             "path": {
                 "fields": {
@@ -588,25 +633,7 @@ MARKET_DATA_ENDPOINTS = {
                 "high": {"source": "float(quote.get('ohlc', {}).get('high', 0))"},
                 "low": {"source": "float(quote.get('ohlc', {}).get('low', 0))"},
                 "close": {"source": "float(quote.get('ohlc', {}).get('close', 0))"},
-                # "market_depth":{
-                #     "asks":{"source": "quote.get('depth', {}).get('sell', [{}])"},
-                #     "bids":{"source": "quote.get('depth', {}).get('buy', [{}])"},
-                    # "asks":{"source": "kite_quote_transformer(quote, 'ask')"},
-                    # "bids":{"source": "kite_quote_transformer(quote, 'bid')"},
                 },
-                # "bid": {
-                #     "source": "float(quote.get('depth', {}).get('buy', [{}])[0].get('price', 0)) if quote.get('depth', {}).get('buy') else 0"
-                # },
-                # "ask": {
-                #     "source": "float(quote.get('depth', {}).get('sell', [{}])[0].get('price', 0)) if quote.get('depth', {}).get('sell') else 0"
-                # },
-                # "bid_volume": {
-                #     "source": "float(quote.get('depth', {}).get('buy', [{}])[0].get('quantity', 0)) if quote.get('depth', {}).get('buy') else 0"
-                # },
-                # "ask_volume": {
-                #     "source": "float(quote.get('depth', {}).get('sell', [{}])[0].get('quantity', 0)) if quote.get('depth', {}).get('sell') else 0"
-                # },
-            # },
         },
     },
     #
@@ -659,10 +686,6 @@ API_SPEC = {
 # -------------------------------------------------------------------------
 # MASTER_DATA_SPEC - Instruments Universe
 # -------------------------------------------------------------------------
-@registry.register()
-def kite_custom_asset_processor(row, **kwargs):
-    print(f"Processing row: {row}")
-    return None
 
 MASTER_DATA_SPEC = [
     {
@@ -798,7 +821,7 @@ STREAMING_SPEC = {
         "market_data": {
             "url": "wss://ws.kite.trade",  # Will be formatted with credentials via auth
             "backend": {"type": "websocket"},
-            "streams": ["data", "order"], # tood: pass data and orders
+            "streams": ["data", "order", "quote"], # tood: pass data and orders
             # "streams": ["data"], # todo: pass data and orders
             "auth": {
                 "mode": "url",
@@ -837,10 +860,9 @@ STREAMING_SPEC = {
             },
             "router": {
                 "rules": [
-                    # If it has 'LastRate' or 'LTP', it's data
-                    # Check for 'Exch' and 'ScripCode' to confirm it's a feed update
                     {"channel": "data", "match": "isinstance(data, dict) and 'data' == data.get('type', '')"},
                     {"channel": "order", "match": "isinstance(data, dict) and 'order' == data.get('type', '')"},
+                    {"channel": "quote", "match": "isinstance(data, dict) and 'quote' == data.get('type', '')"},
                 ]
             },
             "converters": {
@@ -856,7 +878,9 @@ STREAMING_SPEC = {
                         "custom": "kite_order_converter",
                     }
                 ],
-
+                "quote": [
+                    {"custom":'kite_quote_converter'}
+                ]
             }
     }
 }}
@@ -918,4 +942,6 @@ def register_brokers():
         config = create_config(variant)
         cls_name = to_title_case(config.broker.name)
         broker_class_factory(cls_name, config)
-        print(f"registered: {cls_name}")
+        # print(f"registered: {cls_name}")
+
+print(f"Using kite from: {__file__}")
