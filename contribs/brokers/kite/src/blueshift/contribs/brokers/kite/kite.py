@@ -12,9 +12,6 @@ Based on Kite Connect v3 API documentation:
 https://kite.trade/docs/connect/v3/
 """
 from __future__ import annotations
-
-import traceback
-
 import pandas as pd
 import hashlib
 import struct
@@ -137,48 +134,6 @@ def kite_unsubscriber_json(subscribe_assets, **kwargs):
     to_sub = [int(x.security_id) if isinstance(subscribe_assets, (list, tuple)) else int(subscribe_assets.security_id) for x in subscribe_assets]
     return ['full', to_sub]
 
-@registry.register()
-def kite_ws_url(api_key, access_token, **kwargs) -> str:
-    """
-    Generate Kite WebSocket URL with authentication.
-    URL format: wss://ws.kite.trade?api_key={key}&access_token={token}
-    """
-    return f"wss://ws.kite.trade?api_key={api_key}&access_token={access_token}"
-
-@registry.register()
-def kite_order_converter(data, data_type=None ,*args, **kwargs) -> dict:
-    """
-
-    {'type': 'order', 'id': '', 'data': {'account_id': 'BQJ050', 'unfilled_quantity': 0, 'checksum': '',
-    'placed_by': 'BQJ050', 'order_id': '260123220461909', 'exchange_order_id': '1100000021264291',
-    'parent_order_id': None, 'status': 'OPEN', 'status_message': None,
-     'status_message_raw': None, 'order_timestamp': '2026-01-23 10:10:37', 'exchange_update_timestamp': '2026-01-23 10:10:37',
-     'exchange_timestamp': '2026-01-23 10:10:37', 'variety': 'regular', 'exchange': 'NSE', 'tradingsymbol': 'GOLDBEES',
-      'instrument_token': 3693569, 'order_type': 'LIMIT', 'transaction_type': 'BUY', 'validity': 'DAY',
-      'product': 'CNC', 'quantity': 1, 'disclosed_quantity': 0, 'price': 128.1, 'trigger_price': 0, 'average_price': 0,
-       'filled_quantity': 0, 'pending_quantity': 1, 'cancelled_quantity': 0, 'market_protection': 0, 'meta': {},
-    'tag': None, 'guid': '19Xpbjggknpgbqa'}}
-    """
-    # print(data, args, kwargs)
-    mappings = kwargs.get('mappings')
-    order = {
-        "order_id": data['data']['order_id'],
-        "broker_order_id": data['data']['order_id'],
-        "security_id": data['data']['instrument_token'],
-        "symbol": data['data']['tradingsymbol'],
-        "quantity": float(data['data'].get('quantity', 0)),
-        "filled": float(data['data'].get('filled_quantity', 0 )),
-        "average_price": float(data['data'].get('average_price', 0 )),
-        "side": mappings.order_side.to_blueshift(data['data']['transaction_type']),
-        "order_type": mappings.order_type.to_blueshift(data['data']['order_type']),
-        "order_validity": mappings.order_validity.to_blueshift(data['data']['validity']),
-        "price": float(data['data'].get('price', 0 )),
-        "status": mappings.order_status.to_blueshift(data['data']['status']),
-        "timestamp": pd.Timestamp(data['data']['order_timestamp']).tz_localize('Asia/Kolkata').tz_convert('Asia/Kolkata') \
-        if data['data'].get('order_timestamp') else pd.Timestamp.now(tz='Asia/Kolkata'),
-    }
-    return order
-
 
 @registry.register()
 def kite_data_converter(data,*args, **kwargs) -> tuple:
@@ -215,7 +170,7 @@ def parse_market_depth(buf: bytes):
     for i in range(_DEPTH_ENTRIES):
         qty, price, orders = _DEPTH_ENTRY_STRUCT.unpack_from(buf, offset)
         # print(f"qty: {qty}, price: {price/100}")
-        entry = (qty, price/100)
+        entry = (price/100, qty)
         if i < 5:
             bids.append(entry)
         else:
@@ -230,9 +185,9 @@ def parse_full(buf: bytes, tz_info = None):
     h = _FULL_HEAD_STRUCT.unpack_from(buf, 0)
     security_id = h[0]
     ltp = h[1]/100
-    ts = pd.Timestamp(h[11], unit='s')
+    ts = pd.Timestamp(h[11], unit='s',tz='UTC')
     if tz_info:
-        ts = ts.tz_localize(tz_info)
+        ts = ts.tz_convert(tz_info)
     # for attr in ('last', 'close', 'open', 'high', 'low', 'upper_circuit', 'lower_circuit'):
     quote = to_dict(security_id=security_id , type = "quote" ,
                     last = ltp, timestamp = ts,
@@ -695,9 +650,7 @@ MASTER_DATA_SPEC = [
             "response": {  "result": {}},
         },
         "mode": "file",
-        # "format": "csv.gz",
         "format": "csv",
-        # "csv_options": {"dtype": "str"},
         "compression":'gzip',
         "assets": [
             # Indices
@@ -867,19 +820,48 @@ STREAMING_SPEC = {
             },
             "converters": {
                 "data": [
-                    {
-                        # "condition": "len(data) >0",
-                        "custom": "kite_data_converter"
-
+                        {
+                        "condition": "isinstance(data, dict) and 'data' == data.get('type', '')",
+                        "fields": {
+                            "asset": {"source": "broker.sid(data['security_id'])"},
+                            "timestamp": {"source": "pd.Timestamp(data['timestamp']).tz_convert(broker.tz)"},
+                            "data": {
+                                    "price": {"source": "float(data['price'])"},
+                                    "volume": {"source": "int(data['volume'])"}
+                            }
+                        }
                     }
                 ],
                 "order": [
                     {
-                        "custom": "kite_order_converter",
+                        "condition": "isinstance(data, dict) and 'order' == data.get('type', '')",
+                        "fields": {
+                            "order_id": {"source": "data['data']['order_id']"},
+                             "broker_order_id": {"source": "data['data']['order_id']"},
+                             "security_id": {"source": "data['data']['instrument_token']"},
+                             "symbol": {"source": "data['data']['tradingsymbol']"},
+                             "quantity": {"source": "float(data['data'].get('quantity', 0))"},
+                             "filled": {"source": "float(data['data'].get('filled_quantity', 0 ))"},
+                             "average_price":{"source": "float(data['data'].get('average_price', 0 ))"},
+                             "side": {"source": "mappings.order_side.to_blueshift(data['data']['transaction_type'])"},
+                             "order_type": {"source": "mappings.order_type.to_blueshift(data['data']['order_type'])"},
+                             "order_validity": {"source": "mappings.order_validity.to_blueshift(data['data']['validity'])"},
+                             "price": {"source": "float(data['data'].get('price', 0 ))"},
+                             "status": {"source": "mappings.order_status.to_blueshift(data['data']['status'])"},
+                             "timestamp": {"source": "pd.Timestamp(data['data']['order_timestamp'])"},
+                        }
                     }
                 ],
-                "quote": [
-                    {"custom":'kite_quote_converter'}
+                "quote":  [
+                    {
+                        "condition": "isinstance(data, dict) and 'quote' == data.get('type', '')",
+                        "fields": {
+                            "timestamp": {"source": "pd.Timestamp(data.get('timestamp')).tz_convert(broker.tz)"},
+                            "symbol":{"source":"broker.sid(data['security_id']).symbol"},
+                            "bids": {"source": "data.get('bids', [])"},
+                            "asks": {"source": "data.get('asks', [])"},
+                        }
+                    }
                 ]
             }
     }
